@@ -236,3 +236,9 @@
 - Fixed Simulation header editor so users can clear and type new header lines.
 - Moved layout/view controls into a compact View dropdown to avoid ugly TopBar wrapping between Expand and Save.
 - Removed remaining Telemetry UI remnants.
+
+## 0.2.8 — Build 26080518
+
+- Declared project license as AGPL-3.0-only in package metadata.
+- Simplified README to focus on overview, usage, local bridge and documentation map.
+- Removed detailed project structure, license, version/build and changelog-style sections from README.

@@ -748,3 +748,14 @@ and there's a real template gallery (built-in + user packs).
 - [x] `npm audit` → 0 vulnerabilities.
 - [x] `tsc --noEmit` clean; `vitest run` → 67/67 passing; `vite build` clean before final metadata update.
 - [x] `tsc --noEmit` clean after final metadata update.
+
+## v0.2.8 Build 26080518 — README overview and AGPL metadata ✅
+
+### What changed
+- [x] Build updated after Europe/Berlin time check to `26080518`.
+- [x] Reworked README into a concise overview with capabilities, core concepts, startup, local bridge and documentation links.
+- [x] Removed README sections that duplicate other docs: Project Structure, Version/Build, License, Recent UI additions and changelog-like history blocks.
+- [x] Set package license metadata to `AGPL-3.0-only`.
+
+### Validation
+- [x] `tsc --noEmit` clean after documentation/package metadata update.

@@ -769,3 +769,12 @@ and there's a real template gallery (built-in + user packs).
 
 ### Validation
 - [x] `tsc --noEmit` clean after documentation/image update.
+
+## v0.2.8 Build 26080520 — DB export extension fix ✅
+
+### What changed
+- [x] Build updated after Europe/Berlin time check to `26080520`.
+- [x] Database export now defaults to `.db` instead of `.sqlite` (e.g. `config.db`).
+
+### Validation
+- [x] `tsc --noEmit` clean.

@@ -246,3 +246,7 @@
 ## 0.2.8 — Build 26080518 Screenshots
 
 - Added README screenshots for canvas overview, AI Rule Assistant and SQL Browser.
+
+## 0.2.8 — Build 26080520
+
+- Changed SQLite database export default extension from `.sqlite` to `.db`.

@@ -493,7 +493,7 @@ export const useStore = create<StudioState>((set, get) => ({
     if (!activeDb) return;
     activeDb.ensureRoutingRuleQueries();
     const name = get().dbFileName ?? 'bifrost.db';
-    downloadFile(name.replace(/\.(db|sqlite3?)$/i, '') + '.sqlite', activeDb.exportBytes(), 'application/x-sqlite3');
+    downloadFile(name.replace(/\.(db|sqlite|sqlite3)$/i, '') + '.db', activeDb.exportBytes(), 'application/x-sqlite3');
   },
 
   importConfig: async (config) => {

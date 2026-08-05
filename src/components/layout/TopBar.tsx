@@ -166,7 +166,7 @@ export function TopBar() {
     if (d && d !== direction) setDirection(d);
   };
 
-  const baseName = () => (dbFileName ?? 'project').replace(/\.(db|sqlite3?)$/i, '') || 'project';
+  const baseName = () => (dbFileName ?? 'project').replace(/\.(db|sqlite|sqlite3)$/i, '') || 'project';
 
   return (
     <header className="relative z-30 min-h-14 shrink-0 glass border-b border-border flex flex-wrap items-center gap-2 px-3 py-2">

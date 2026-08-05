@@ -118,6 +118,7 @@ function CanvasInner() {
 
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      event.stopPropagation();
       if (event.ctrlKey || event.metaKey || event.shiftKey) useStore.getState().toggleNodeSelection(node.id);
       else selectNode(node.id);
     },

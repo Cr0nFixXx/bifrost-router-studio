@@ -1,5 +1,5 @@
 /** Small, dependency-free UI primitives shared across the studio. */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -160,9 +160,37 @@ export function Modal({
   }, [open, onClose]);
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
-    if (open) panelRef.current?.focus();
+    if (open) {
+      setSize(null);
+      panelRef.current?.focus();
+    }
   }, [open]);
+
+  const startResize = (edge: 'left' | 'right' | 'top' | 'bottom', e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const start = { x: e.clientX, y: e.clientY, width: rect.width, height: rect.height };
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - start.x;
+      const dy = ev.clientY - start.y;
+      const maxW = Math.floor(window.innerWidth * 0.95);
+      const maxH = Math.floor(window.innerHeight * 0.92);
+      setSize({
+        width: Math.max(420, Math.min(maxW, start.width + (edge === 'right' ? dx : edge === 'left' ? -dx : 0))),
+        height: Math.max(320, Math.min(maxH, start.height + (edge === 'bottom' ? dy : edge === 'top' ? -dy : 0))),
+      });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   return (
     <AnimatePresence>
@@ -179,8 +207,8 @@ export function Modal({
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.97, y: 8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-            className={`relative w-full ${width} glass-strong rounded-2xl shadow-depth overflow-hidden resize`}
-              style={{ resize: 'both', minWidth: '420px', minHeight: '320px', maxWidth: '95vw', maxHeight: '92vh' }}
+            className={`relative ${width} glass-strong rounded-2xl shadow-depth overflow-hidden`}
+              style={{ ...(size ?? {}), minWidth: '420px', minHeight: '320px', maxWidth: '95vw', maxHeight: '92vh' }}
               ref={panelRef}
               tabIndex={-1}
               role="dialog"
@@ -199,6 +227,10 @@ export function Modal({
             </div>
             <div className={bodyClassName}>{children}</div>
             {footer && <div className="px-6 py-4 border-t border-border flex justify-end gap-2">{footer}</div>}
+            <div className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize hover:bg-neon/30" onPointerDown={(e) => startResize('left', e)} />
+            <div className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize hover:bg-neon/30" onPointerDown={(e) => startResize('right', e)} />
+            <div className="absolute left-0 top-0 h-1.5 w-full cursor-ns-resize hover:bg-neon/30" onPointerDown={(e) => startResize('top', e)} />
+            <div className="absolute bottom-0 left-0 h-1.5 w-full cursor-ns-resize hover:bg-neon/30" onPointerDown={(e) => startResize('bottom', e)} />
           </motion.div>
         </motion.div>
       )}

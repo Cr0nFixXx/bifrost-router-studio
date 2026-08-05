@@ -148,6 +148,7 @@ interface StudioState {
   past: HistorySnapshot[];
   future: HistorySnapshot[];
   _lastCommit: { tag: string; t: number } | null;
+  clipboard: { nodes: WFNode[]; edges: Edge[] } | null;
 
   /* simulation */
   sim: SimResult | null;
@@ -186,6 +187,8 @@ interface StudioState {
   deleteNode: (id: string) => void;
   deleteSelected: () => void;
   duplicateSelected: () => void;
+  copySelectedToClipboard: () => void;
+  pasteClipboard: () => void;
   duplicateRule: (ruleId: string) => void;
   copyRuleJson: (ruleId: string) => void;
   groupSelected: () => void;
@@ -369,6 +372,7 @@ export const useStore = create<StudioState>((set, get) => ({
   past: [],
   future: [],
   _lastCommit: null,
+  clipboard: null,
 
   sim: null,
   simRunning: false,
@@ -741,6 +745,28 @@ export const useStore = create<StudioState>((set, get) => ({
       const newId = get().addNode(node.data.kind, { x: node.position.x + 48, y: node.position.y + 48 }, patch);
       set({ selectedNodeId: newId });
     }
+  },
+  copySelectedToClipboard: () => {
+    const selected = get().nodes.filter((n) => n.selected || n.id === get().selectedNodeId);
+    const ids = new Set(selected.map((n) => n.id));
+    set({ clipboard: { nodes: selected, edges: get().edges.filter((e) => ids.has(e.source) && ids.has(e.target)) } });
+  },
+  pasteClipboard: () => {
+    const clip = get().clipboard;
+    if (!clip || get().canvasLocked) return;
+    get().commit('paste');
+    const idMap = new Map<string, string>();
+    const pasted = clip.nodes.map((n) => {
+      const newNodeId = newId(n.data.kind as NodeKind);
+      idMap.set(n.id, newNodeId);
+      const data = { ...(n.data as any) };
+      if (data.kind === 'trigger') data.ruleId = createRuleUid();
+      return { ...n, id: newNodeId, selected: true, parentNode: undefined, extent: undefined, position: { x: n.position.x + 80, y: n.position.y + 80 }, data } as WFNode;
+    });
+    const pastedEdges = clip.edges.map((e) => ({ ...e, id: `${idMap.get(e.source)}-${idMap.get(e.target)}-${Date.now().toString(36)}`, source: idMap.get(e.source)!, target: idMap.get(e.target)! })).filter((e) => e.source && e.target);
+    set({ nodes: [...get().nodes.map((n) => ({ ...n, selected: false })), ...pasted], edges: [...get().edges, ...pastedEdges], selectedNodeId: pasted[0]?.id ?? null });
+    get().markDirty();
+    get().recompute();
   },
   duplicateRule: (ruleId) => {
     if (get().canvasLocked) return;

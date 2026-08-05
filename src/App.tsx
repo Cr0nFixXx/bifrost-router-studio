@@ -89,22 +89,22 @@ export default function App() {
       <RuleChainWizard />
       <DiffModal />
       <TemplateGallery />
-      <Modal open={dashboardOpen} onClose={() => setDashboardOpen(false)} title="Dashboard" subtitle="Workspace overview and validation health" width="max-w-[95vw]">
+      <Modal open={dashboardOpen} onClose={() => setDashboardOpen(false)} title="Dashboard" subtitle="Workspace overview and validation health" width="w-[min(980px,92vw)]">
         <DashboardPanel />
       </Modal>
-      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Einstellungen" subtitle="Studio preferences, theme and layout" width="max-w-[95vw]">
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Einstellungen" subtitle="Studio preferences, theme and layout" width="w-[min(980px,92vw)]">
         <SettingsPanel />
       </Modal>
-      <Modal open={sqlBrowserOpen} onClose={() => setSqlBrowserOpen(false)} title="SQL Browser" subtitle="routing_rules / routing_targets browser with direct DB edits" width="max-w-[95vw]" bodyClassName="p-5 max-h-[82vh] overflow-hidden">
+      <Modal open={sqlBrowserOpen} onClose={() => setSqlBrowserOpen(false)} title="SQL Browser" subtitle="routing_rules / routing_targets browser with direct DB edits" width="w-[min(1120px,92vw)]" bodyClassName="p-5 max-h-[82vh] overflow-hidden">
         <SqlBrowserPanel />
       </Modal>
-      <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Erweiterte Suche" subtitle="Rules und Nodes finden, auswählen und hervorheben" width="max-w-[95vw]">
+      <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Erweiterte Suche" subtitle="Rules und Nodes finden, auswählen und hervorheben" width="w-[min(980px,92vw)]">
         <SearchPanel />
       </Modal>
-      <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Hilfe" subtitle="Bedienung, Shortcuts und Architektur" width="max-w-[95vw]">
+      <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Hilfe" subtitle="Bedienung, Shortcuts und Architektur" width="w-[min(980px,92vw)]">
         <HelpPanel />
       </Modal>
-      <Modal open={aiOpen} onClose={() => setAiOpen(false)} title="AI Rule Assistant" subtitle="Review-only routing copilot · no automatic canvas changes" width="max-w-[95vw]" bodyClassName="p-0 max-h-[82vh] overflow-hidden">
+      <Modal open={aiOpen} onClose={() => setAiOpen(false)} title="AI Rule Assistant" subtitle="Review-only routing copilot · no automatic canvas changes" width="w-[min(1180px,92vw)]" bodyClassName="p-0 max-h-[82vh] overflow-hidden">
         <AiAssistantPanel />
       </Modal>
     </div>

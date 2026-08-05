@@ -250,3 +250,10 @@
 ## 0.2.8 — Build 26080520
 
 - Changed SQLite database export default extension from `.sqlite` to `.db`.
+
+## 0.2.8 — Build 26080521
+
+- Modal windows now start at narrower default sizes while remaining edge-resizable.
+- Added edge resize handles for modals instead of relying only on the bottom-right native resize affordance.
+- Added Ctrl/Cmd+Shift+C and Ctrl/Cmd+Shift+V for copying/pasting selected nodes and internal edges.
+- Reinforced Ctrl/Cmd/Shift-click node multi-select handling.

@@ -53,6 +53,16 @@ export function useKeyboardShortcuts(): void {
         useAiAssistant.getState().setOpen(true);
         return;
       }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        s.copySelectedToClipboard();
+        return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        s.pasteClipboard();
+        return;
+      }
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
         s.saveToDb();

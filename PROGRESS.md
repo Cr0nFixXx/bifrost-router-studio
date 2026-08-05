@@ -778,3 +778,16 @@ and there's a real template gallery (built-in + user packs).
 
 ### Validation
 - [x] `tsc --noEmit` clean.
+
+## v0.2.8 Build 26080521 — Modal edge resize and node clipboard ✅
+
+### What changed
+- [x] Build updated after Europe/Berlin time check to `26080521`.
+- [x] Dashboard/Settings/Search/Help/AI/SQL modals now start narrower by default and can still be resized larger.
+- [x] Modal resizing now works from the window edges via custom handles.
+- [x] Added selected-node clipboard in store.
+- [x] Added Ctrl/Cmd+Shift+C to copy selected nodes and Ctrl/Cmd+Shift+V to paste them with fresh IDs/ruleIds.
+- [x] Ctrl/Cmd/Shift-click on nodes now stops event propagation to avoid pane deselection.
+
+### Validation
+- [x] `tsc --noEmit` clean; tests/build/audit run after implementation.

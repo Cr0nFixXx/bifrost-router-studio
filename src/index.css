@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --neon-rgb: 94 234 212;
+  --canvas-rgb: 9 10 12;
+  --surface-rgb: 19 19 22;
+  --surface-2-rgb: 26 26 31;
+  --surface-3-rgb: 33 33 40;
+  --border-rgb: 39 39 46;
+  --border-strong-rgb: 52 52 61;
+  --ink-rgb: 231 231 234;
+  --ink-muted-rgb: 154 154 163;
+  --ink-faint-rgb: 106 106 115;
+  --shadow-rgb: 0 0 0;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --canvas-rgb: 245 247 251;
+  --surface-rgb: 255 255 255;
+  --surface-2-rgb: 240 243 248;
+  --surface-3-rgb: 230 235 243;
+  --border-rgb: 203 213 225;
+  --border-strong-rgb: 148 163 184;
+  --ink-rgb: 15 23 42;
+  --ink-muted-rgb: 71 85 105;
+  --ink-faint-rgb: 100 116 139;
+  --shadow-rgb: 15 23 42;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  @apply bg-canvas text-ink font-sans antialiased;
+  overflow: hidden;
+}
+
+/* Frosted glass surface utility ------------------------------------- */
+@layer components {
+  .glass {
+    @apply bg-surface/70 backdrop-blur-xl border border-border;
+  }
+  .glass-strong {
+    @apply bg-surface-2/80 backdrop-blur-2xl border border-border;
+  }
+  .panel {
+    @apply bg-surface border border-border;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium;
+  }
+  .input {
+    @apply w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm text-ink
+           outline-none transition focus:border-neon/60 focus:ring-2 focus:ring-neon/20
+           placeholder:text-ink-faint;
+  }
+  .label {
+    @apply text-[11px] uppercase tracking-wider text-ink-faint font-semibold mb-1 block;
+  }
+  .divider {
+    @apply h-px w-full bg-border;
+  }
+}
+
+/* Scrollbar --------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--surface-3-rgb));
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--border-strong-rgb));
+  background-clip: padding-box;
+}
+
+/* React Flow theme overrides ---------------------------------------- */
+.react-flow__background {
+  background-color: rgb(var(--canvas-rgb));
+}
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgb(var(--canvas-rgb));
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.react-flow__handle:hover {
+  transform: scale(1.35);
+}
+.react-flow__edge-path {
+  stroke-width: 1.8;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 2.6;
+}
+.react-flow__controls {
+  background: rgb(var(--surface-rgb));
+  border: 1px solid rgb(var(--border-rgb));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.75);
+}
+.react-flow__controls-button {
+  background: rgb(var(--surface-rgb));
+  border-bottom: 1px solid rgb(var(--border-rgb));
+  color: rgb(var(--ink-muted-rgb));
+  fill: rgb(var(--ink-muted-rgb));
+}
+.react-flow__controls-button:hover {
+  background: rgb(var(--surface-2-rgb));
+  color: rgb(var(--ink-rgb));
+  fill: rgb(var(--ink-rgb));
+}
+.react-flow__minimap {
+  background-color: rgb(var(--surface-rgb)) !important;
+  border: 1px solid rgb(var(--border-rgb));
+  border-radius: 12px;
+}
+
+/* Animated dashed edge flow */
+.edge-flow-anim {
+  stroke-dasharray: 6 6;
+  animation: dashmove 0.6s linear infinite;
+}
+@keyframes dashmove {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+/* pulsing data dot that travels along active edges */
+.flow-pulse {
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+.no-select {
+  user-select: none;
+}

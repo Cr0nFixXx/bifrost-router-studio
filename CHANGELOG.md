@@ -257,3 +257,9 @@
 - Added edge resize handles for modals instead of relying only on the bottom-right native resize affordance.
 - Added Ctrl/Cmd+Shift+C and Ctrl/Cmd+Shift+V for copying/pasting selected nodes and internal edges.
 - Reinforced Ctrl/Cmd/Shift-click node multi-select handling.
+
+## 0.2.8 — Build 26080522
+
+- Hardened modal close behavior by rendering modals through a body portal.
+- Separated modal wrapper/backdrop/panel pointer events to avoid invisible overlays blocking the UI.
+- Added guaranteed resize-listener cleanup when modals close or unmount.

@@ -791,3 +791,15 @@ and there's a real template gallery (built-in + user packs).
 
 ### Validation
 - [x] `tsc --noEmit` clean; tests/build/audit run after implementation.
+
+## v0.2.8 Build 26080522 — Modal overlay hardening ✅
+
+### What changed
+- [x] Build updated after Europe/Berlin time check to `26080522`.
+- [x] Modal primitive now renders through `document.body` portal to avoid local stacking contexts.
+- [x] Modal wrapper uses `pointer-events-none`; only backdrop and panel are interactive.
+- [x] Modal resize listeners are centrally cleaned up on close/unmount to prevent stuck pointer handlers.
+- [x] Close button, Escape and backdrop click all use the same cleanup path.
+
+### Validation
+- [x] `tsc --noEmit` clean; tests/build/audit run after implementation.

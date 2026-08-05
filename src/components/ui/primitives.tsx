@@ -1,5 +1,6 @@
 /** Small, dependency-free UI primitives shared across the studio. */
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -153,24 +154,42 @@ export function Modal({
   zIndexClass?: string;
   bodyClassName?: string;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+
+  const cleanupResize = () => {
+    resizeCleanupRef.current?.();
+    resizeCleanupRef.current = null;
+  };
+
+  const close = () => {
+    cleanupResize();
+    onClose();
+  };
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     if (open) window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose]);
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     if (open) {
       setSize(null);
       panelRef.current?.focus();
+    } else {
+      cleanupResize();
     }
+    return cleanupResize;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const startResize = (edge: 'left' | 'right' | 'top' | 'bottom', e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    cleanupResize();
     const rect = panelRef.current?.getBoundingClientRect();
     if (!rect) return;
     const start = { x: e.clientX, y: e.clientY, width: rect.width, height: rect.height };
@@ -184,44 +203,46 @@ export function Modal({
         height: Math.max(320, Math.min(maxH, start.height + (edge === 'bottom' ? dy : edge === 'top' ? -dy : 0))),
       });
     };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
+    const up = () => cleanupResize();
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    resizeCleanupRef.current = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
   };
 
-  return (
+  const modal = (
     <AnimatePresence>
       {open && (
         <motion.div
-          className={`fixed inset-0 ${zIndexClass} grid place-items-center p-4`}
+          className={`fixed inset-0 ${zIndexClass} grid place-items-center p-4 pointer-events-none`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={{ opacity: 0, transition: { duration: 0.12 } }}
         >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto" onClick={close} />
           <motion.div
             initial={{ scale: 0.96, y: 12, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.97, y: 8, opacity: 0 }}
+            exit={{ scale: 0.97, y: 8, opacity: 0, transition: { duration: 0.1 } }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-            className={`relative ${width} glass-strong rounded-2xl shadow-depth overflow-hidden`}
-              style={{ ...(size ?? {}), minWidth: '420px', minHeight: '320px', maxWidth: '95vw', maxHeight: '92vh' }}
-              ref={panelRef}
-              tabIndex={-1}
-              role="dialog"
-              aria-modal="true"
-              aria-label={typeof title === 'string' ? title : 'Dialog'}
-
+            className={`relative ${width} glass-strong rounded-2xl shadow-depth overflow-hidden pointer-events-auto`}
+            style={{ ...(size ?? {}), minWidth: '420px', minHeight: '320px', maxWidth: '95vw', maxHeight: '92vh' }}
+            ref={panelRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label={typeof title === 'string' ? title : 'Dialog'}
           >
             <div className="flex items-start justify-between px-6 py-4 border-b border-border">
               <div>
                 <h2 className="text-base font-semibold text-ink">{title}</h2>
                 {subtitle && <p className="text-xs text-ink-faint mt-0.5">{subtitle}</p>}
               </div>
-              <IconButton onClick={onClose} label="Close">
+              <IconButton onClick={close} label="Close">
                 <X size={18} />
               </IconButton>
             </div>
@@ -236,6 +257,8 @@ export function Modal({
       )}
     </AnimatePresence>
   );
+
+  return typeof document === 'undefined' ? null : createPortal(modal, document.body);
 }
 
 export function EmptyState({

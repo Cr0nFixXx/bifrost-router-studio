@@ -116,7 +116,7 @@ Rule/Trigger nodes are metadata anchors only. Conditions are represented as dedi
 
 ## Versioning contract
 
-Current app version is `0.2.8`; do not change this version unless explicitly requested by the user. The build number must be updated for every code change using `YYMMDDHH` in Europe/Berlin time. Current build: `26080521`.
+Current app version is `0.2.8`; do not change this version unless explicitly requested by the user. The build number must be updated for every code change using `YYMMDDHH` in Europe/Berlin time. Current build: `26080522`.
 
 ## Dashboard/settings placement
 
@@ -128,7 +128,7 @@ Dashboard and Settings are top-level modal pages opened from the TopBar. They ar
 
 ## Build/version update
 
-Current version: `0.2.8`. Current build: `26080521`. Do not change version unless explicitly requested. Update build on every code change using Europe/Berlin `YYMMDDHH`.
+Current version: `0.2.8`. Current build: `26080522`. Do not change version unless explicitly requested. Update build on every code change using Europe/Berlin `YYMMDDHH`.
 
 ## User settings store
 
@@ -138,4 +138,4 @@ Current version: `0.2.8`. Current build: `26080521`. Do not change version unles
 
 The app remains browser-only by default. For user-requested server-side filepath support, an optional Node local bridge exists at `scripts/local-bridge.mjs` and can be started with `npm run bridge`. It exposes `/api/open?path=...` and `/api/list?path=...` under `BFRS_LOCAL_ROOT` by default. Absolute paths outside root require `BFRS_ALLOW_ABSOLUTE=1`.
 
-Current version: `0.2.8`. Current build: `26080521`.
+Current version: `0.2.8`. Current build: `26080522`.

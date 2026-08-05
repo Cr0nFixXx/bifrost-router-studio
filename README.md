@@ -17,6 +17,21 @@ The default app is client-side: SQLite runs in the browser through `sql.js`/WASM
 - Ask the optional AI Assistant for review-only routing-rule drafts, explanations and optimizations.
 - Export workspace JSON, Bifrost config JSON, Markdown, PNG/JPG and the edited SQLite DB.
 
+
+## Screenshots
+
+### Canvas overview
+
+![Bifrost Router Studio canvas overview](docs/screenshots/main-canvas.png)
+
+### AI Rule Assistant
+
+![AI Rule Assistant draft review](docs/screenshots/ai-assistant.png)
+
+### SQL Browser
+
+![SQL Browser routing table editor](docs/screenshots/sql-browser.png)
+
 ## Core concepts
 
 | Concept | Purpose |

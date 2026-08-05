@@ -759,3 +759,13 @@ and there's a real template gallery (built-in + user packs).
 
 ### Validation
 - [x] `tsc --noEmit` clean after documentation/package metadata update.
+
+## v0.2.8 Build 26080518 — README screenshots ✅
+
+### What changed
+- [x] Copied uploaded screenshots into `docs/screenshots/`.
+- [x] Added screenshot section to README for canvas, AI Assistant and SQL Browser.
+- [x] Did not commit `/home/user/uploads` contents.
+
+### Validation
+- [x] `tsc --noEmit` clean after documentation/image update.

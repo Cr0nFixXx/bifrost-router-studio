@@ -242,3 +242,7 @@
 - Declared project license as AGPL-3.0-only in package metadata.
 - Simplified README to focus on overview, usage, local bridge and documentation map.
 - Removed detailed project structure, license, version/build and changelog-style sections from README.
+
+## 0.2.8 — Build 26080518 Screenshots
+
+- Added README screenshots for canvas overview, AI Rule Assistant and SQL Browser.

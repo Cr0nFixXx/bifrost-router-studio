@@ -1,7 +1,7 @@
 /** React Flow node/edge data models for the workflow canvas. */
 
 import type { Node, Edge } from 'reactflow';
-import type { CELGroup, ComplexityTier, RoutingTarget, TriggerKind } from './bifrost';
+import type { CELGroup, ComplexityTier, RoutingFallback, RoutingTarget, TriggerKind } from './bifrost';
 
 export type NodeKind =
   | 'trigger'
@@ -87,8 +87,8 @@ export interface FallbackNodeData {
   label: string;
   providerId: string;
   modelId: string;
-  /** Aggregated fallback entries as provider/model strings. */
-  fallbacks?: string[];
+  /** Aggregated fallback entries. String = provider/model, object = pinned key (Bifrost >= 2.2.3). */
+  fallbacks?: RoutingFallback[];
   /** Order in the fallback chain (0 = first fallback). */
   order: number;
 }

@@ -2,6 +2,7 @@ import type { Edge } from 'reactflow';
 import type { ProviderConfig, RoutingRule } from '@/types/bifrost';
 import type { WFNode } from '@/types/workflow';
 import { workflowToRules } from '@/lib/bifrostMapper';
+import { fallbackToParts, fallbackToRef } from './modelRefs';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
 
@@ -63,5 +64,5 @@ export function workflowToMarkdown(nodes: WFNode[], edges: Edge[], providers: Pr
   return `# Bifrost Router Studio Export\n\n- Nodes: ${nodes.length}\n- Connections: ${edges.length}\n- Rules: ${rules.length}\n- Providers: ${providers.length}\n\n## Rules\n\n${rules.map(ruleMd).join('\n\n')}\n\n## Connections\n\n${edges.map((e) => `- \`${e.source}\` → \`${e.target}\`${(e.data as any)?.label ? ` — ${(e.data as any).label}` : ''}`).join('\n')}\n`;
 }
 function ruleMd(r: RoutingRule): string {
-  return `### ${r.priority}. ${r.name}\n\n- Enabled: ${r.enabled}\n- Scope: ${r.scope}${r.scope_id ? ` / ${r.scope_id}` : ''}\n- Chain re-eval: ${r.chain_rule}\n- CEL: \`${r.cel_expression}\`\n- Targets:\n${r.targets.map((t) => `  - ${t.provider ?? '?'} / ${t.model ?? '?'} · weight ${t.weight}${t.api_key ? ` · key ${t.api_key}` : ''}`).join('\n') || '  - none'}\n- Fallbacks:\n${r.fallbacks.map((f) => `  - ${f}`).join('\n') || '  - none'}`;
+  return `### ${r.priority}. ${r.name}\n\n- Enabled: ${r.enabled}\n- Scope: ${r.scope}${r.scope_id ? ` / ${r.scope_id}` : ''}\n- Chain re-eval: ${r.chain_rule}\n- CEL: \`${r.cel_expression}\`\n- Targets:\n${r.targets.map((t) => `  - ${t.provider ?? '?'} / ${t.model ?? '?'} · weight ${t.weight}${t.api_key ? ` · key ${t.api_key}` : ''}`).join('\n') || '  - none'}\n- Fallbacks:\n${r.fallbacks.map((f) => { const p = fallbackToParts(f); return `  - ${fallbackToRef(f)}${p.key_id ? ` · key ${p.key_id}` : ''}`; }).join('\n') || '  - none'}`;
 }

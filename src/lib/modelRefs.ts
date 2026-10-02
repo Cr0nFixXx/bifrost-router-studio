@@ -1,8 +1,16 @@
+import type { RoutingFallback } from '@/types/bifrost';
+
 export interface ModelRefLike {
   id?: string;
   provider?: string;
   label?: string;
   model?: string;
+}
+
+export interface FallbackParts {
+  provider: string;
+  model?: string;
+  key_id?: string;
 }
 
 export function stripProviderPrefix(value: string | undefined | null, provider?: string | null): string {
@@ -38,4 +46,31 @@ export function modelCandidates(catalog: ModelRefLike[], provider?: string | nul
   const filtered = catalog.filter((m) => providerMatchesModel(m, p));
   const source = filtered.length || p ? filtered : catalog;
   return Array.from(new Set(source.map((m) => modelValueForSelection(m, p)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+/* --------------------------- fallbacks (Bifrost >= 2.2.3) --------------------------- */
+
+/** Split a fallback entry into its parts. Strings are `"provider/model"`, `"provider/"` keeps the incoming model. */
+export function fallbackToParts(fb: RoutingFallback): FallbackParts {
+  if (fb && typeof fb === 'object') {
+    return { provider: fb.provider ?? '', model: fb.model || undefined, key_id: fb.key_id || fb.provider_key_name || undefined };
+  }
+  const [provider, ...modelParts] = String(fb ?? '').split('/');
+  return { provider: provider ?? '', model: modelParts.join('/') || undefined };
+}
+
+/** Legacy string form of a fallback entry (used for display and exports that cannot carry a pin). */
+export function fallbackToRef(fb: RoutingFallback): string {
+  const { provider, model } = fallbackToParts(fb);
+  if (!provider) return '';
+  return `${provider}/${model ?? ''}`;
+}
+
+/** Object form only when a key is pinned — otherwise stay on the compact string form. */
+export function fallbackFromParts(provider: string | null | undefined, model?: string | null, key_id?: string | null): RoutingFallback {
+  const p = String(provider ?? '').trim();
+  const m = String(model ?? '').trim();
+  const k = String(key_id ?? '').trim();
+  if (k) return { provider: p, ...(m ? { model: m } : {}), key_id: k };
+  return p ? `${p}/${m}` : '';
 }

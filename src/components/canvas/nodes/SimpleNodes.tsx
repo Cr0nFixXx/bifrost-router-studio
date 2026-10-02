@@ -5,6 +5,7 @@ import { BaseNode, type PortDef } from './BaseNode';
 import { Chip } from '@/components/ui/primitives';
 import { useStore } from '@/store/useStore';
 import { emitCondition } from '@/lib/cel';
+import { fallbackToParts, fallbackToRef } from '@/lib/modelRefs';
 import type { NodeProps } from 'reactflow';
 import type {
   AnnotationNodeData,
@@ -152,7 +153,7 @@ function FallbackNodeImpl({ id, data, selected }: NodeProps<FallbackNodeData>) {
         {fallbacks.slice(0, 4).map((fb, idx) => (
           <div key={idx} className="flex items-center gap-2 text-[10px]">
             <Chip tone="red">#{idx + 1}</Chip>
-            <span className="truncate text-ink-muted">{fb}</span>
+            <span className="truncate text-ink-muted">{fallbackToRef(fb)}{fallbackToParts(fb).key_id ? ' · pinned key' : ''}</span>
           </div>
         ))}
         {fallbacks.length > 4 && <div className="text-[10px] text-ink-faint">+ {fallbacks.length - 4} more fallbacks</div>}

@@ -24,7 +24,13 @@ import {
 } from 'lucide-react';
 import { useSelectedNode, useStore } from '@/store/useStore';
 import { Button, Chip, EmptyState, Toggle } from '@/components/ui/primitives';
-import { inferProviderFromModelValue, modelCandidates, stripProviderPrefix } from '@/lib/modelRefs';
+import {
+  fallbackFromParts,
+  fallbackToParts,
+  inferProviderFromModelValue,
+  modelCandidates,
+  stripProviderPrefix,
+} from '@/lib/modelRefs';
 import {
   compileGroup,
   newCondition,
@@ -38,6 +44,7 @@ import type {
   CELField,
   CELGroup,
   ComplexityTier,
+  RoutingFallback,
   RuleScope,
 } from '@/types/bifrost';
 
@@ -607,18 +614,20 @@ function FallbackEditor({ node }: { node: any }) {
   const providers = useStore((st) => st.providers);
   const catalog = useStore((st) => st.modelCatalog);
   const update = (patch: any) => useStore.getState().updateNodeData(node.id, patch);
-  const fallbacks = data.fallbacks?.length ? data.fallbacks : [[data.providerId, data.modelId].filter(Boolean).join('/')].filter(Boolean);
-  const setFallback = (idx: number, value: string) => {
-    const next = fallbacks.map((f: string, i: number) => i === idx ? value : f);
-    const [provider, ...modelParts] = (next[0] ?? '').split('/');
-    update({ fallbacks: next, providerId: provider ?? '', modelId: modelParts.join('/'), label: next.length > 1 ? `${next.length} Fallbacks` : (modelParts.join('/') || provider || 'Fallback') });
+  const fallbacks: RoutingFallback[] = data.fallbacks?.length ? data.fallbacks : [[data.providerId, data.modelId].filter(Boolean).join('/')].filter(Boolean);
+  const syncMirror = (next: RoutingFallback[]) => update({
+    fallbacks: next,
+    providerId: fallbackToParts(next[0] ?? '').provider,
+    modelId: fallbackToParts(next[0] ?? '').model ?? '',
+  });
+  const setFallback = (idx: number, value: RoutingFallback) => {
+    const next = fallbacks.map((f, i) => i === idx ? value : f);
+    const p = fallbackToParts(value);
+    syncMirror(next);
+    update({ label: next.length > 1 ? `${next.length} Fallbacks` : (p.model || p.provider || 'Fallback') });
   };
   const addFallback = () => update({ fallbacks: [...fallbacks, ''] });
-  const removeFallback = (idx: number) => {
-    const next = fallbacks.filter((_: string, i: number) => i !== idx);
-    const [provider, ...modelParts] = (next[0] ?? '').split('/');
-    update({ fallbacks: next, providerId: provider ?? '', modelId: modelParts.join('/') });
-  };
+  const removeFallback = (idx: number) => syncMirror(fallbacks.filter((_: RoutingFallback, i: number) => i !== idx));
   return (
     <div className="space-y-4">
       <Field icon={<Heading size={12} />} label="Label">
@@ -629,24 +638,25 @@ function FallbackEditor({ node }: { node: any }) {
           <span className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold">Fallback chain</span>
           <button className="text-xs text-neon hover:text-ink" onClick={addFallback}>+ add fallback</button>
         </div>
-        {fallbacks.map((fb: string, i: number) => {
-          const [prov, ...modelParts] = fb.split('/');
-          const model = modelParts.join('/');
+        {fallbacks.map((fb: RoutingFallback, i: number) => {
+          const { provider: prov, model, key_id } = fallbackToParts(fb);
           const providerIds = Array.from(new Set([...(providers?.map((p: any) => p.id) ?? []), ...(providers?.map((p: any) => p.type).filter(Boolean) ?? [])]));
-          const updateFb = (provider: string, modelValue: string) => {
-            const inferred = provider || inferProviderFromModelValue(modelValue, providerIds) || '';
-            const cleanModel = stripProviderPrefix(modelValue, inferred);
-            setFallback(i, [inferred, cleanModel].filter(Boolean).join('/'));
+          const updateFb = (patch: { provider?: string; model?: string; key_id?: string }) => {
+            const inferred = (patch.provider ?? prov) || inferProviderFromModelValue(patch.model ?? model ?? '', providerIds) || '';
+            const cleanModel = stripProviderPrefix(patch.model ?? model ?? '', inferred);
+            setFallback(i, fallbackFromParts(inferred, cleanModel, patch.key_id ?? key_id));
           };
           return (
-          <div key={i} className="grid grid-cols-[28px_1fr_1fr_auto] gap-1.5 items-center">
+          <div key={i} className="grid grid-cols-[28px_1fr_1fr_1fr_auto] gap-1.5 items-center">
             <span className="text-[10px] text-ink-faint text-right">#{i + 1}</span>
-            <ProviderDropdown value={prov ?? ''} onChange={(v: string) => updateFb(v, model)} providers={providers} catalog={catalog} current={{ ...data, providerId: prov }} />
-            <ModelDropdown value={model} onChange={(v: string) => updateFb(prov, v)} catalog={catalog} current={{ ...data, providerId: prov, modelId: model }} providers={providers} />
+            <ProviderDropdown value={prov ?? ''} onChange={(v: string) => updateFb({ provider: v })} providers={providers} catalog={catalog} current={{ ...data, providerId: prov }} />
+            <ModelDropdown value={model ?? ''} onChange={(v: string) => updateFb({ model: v })} catalog={catalog} current={{ ...data, providerId: prov, modelId: model }} providers={providers} />
+            <KeyDropdown value={key_id ?? ''} onChange={(v: string) => updateFb({ key_id: v })} providers={providers} providerId={prov} />
             <button className="text-ink-faint hover:text-neon-red px-1" onClick={() => removeFallback(i)}>×</button>
           </div>
           );
         })}
+        <div className="text-[10px] text-ink-faint">Optional key id pins the fallback to one provider key (skips load balancing). Requires Bifrost 2.2.3+.</div>
       </div>
     </div>
   );

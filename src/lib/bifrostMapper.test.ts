@@ -93,6 +93,19 @@ describe('bifrostMapper', () => {
 
 
 
+  it('round-trips pinned fallbacks without crashing on the object form', () => {
+    const src = rule({
+      fallbacks: ['anthropic/claude', { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }],
+    });
+    const { nodes, edges } = rulesToWorkflow([src]);
+    const fb = nodes.find((n) => n.data.kind === 'fallback') as any;
+    expect(fb.data.providerId).toBe('anthropic');
+    expect(fb.data.modelId).toBe('claude');
+
+    const [roundTrip] = workflowToRules(nodes, edges);
+    expect(roundTrip.fallbacks).toEqual(['anthropic/claude', { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }]);
+  });
+
   it('imports AI-generated complex CEL into real condition/logic nodes', () => {
     const aiRule = rule({
       id: 'ai-complex',

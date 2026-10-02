@@ -1,5 +1,6 @@
-import type { ProviderConfig, RoutingRule, RoutingTarget } from '@/types/bifrost';
+import type { ProviderConfig, RoutingFallback, RoutingRule, RoutingTarget } from '@/types/bifrost';
 import { compileGroup, parseExpression, validateCEL } from '@/lib/cel';
+import { fallbackFromParts } from '@/lib/modelRefs';
 import { createRuleUid, isRuleUid } from '@/lib/ruleIds';
 
 export interface DraftValidation {
@@ -32,12 +33,14 @@ function normalizeTarget(raw: any): RoutingTarget | null {
   return { provider, model, ...(api_key ? { api_key } : {}), weight: Number.isFinite(weight) ? weight : 1 };
 }
 
-function normalizeFallback(raw: any): string | null {
+function normalizeFallback(raw: any): RoutingFallback | null {
   if (typeof raw === 'string') return raw.trim() || null;
   if (raw && typeof raw === 'object') {
     const provider = typeof raw.provider === 'string' ? raw.provider.trim() : '';
+    if (!provider) return null; // Bifrost rejects a fallback without provider
     const model = typeof raw.model === 'string' ? raw.model.trim() : '';
-    return [provider, model].filter(Boolean).join('/') || null;
+    const key_id = typeof raw.key_id === 'string' ? raw.key_id.trim() : typeof raw.provider_key_name === 'string' ? raw.provider_key_name.trim() : '';
+    return fallbackFromParts(provider, model, key_id) || null;
   }
   return null;
 }
@@ -185,7 +188,7 @@ export function normalizeAiDraft(input: unknown, existingRules: RoutingRule[] = 
       if (t.provider && providerIds.size && !providerIds.has(t.provider)) warnings.push(`${name}: provider "${t.provider}" is not in the configured provider catalog.`);
       if (t.model && modelIds.size && !modelIds.has(t.model)) warnings.push(`${name}: model "${t.model}" is not in the current model catalog.`);
     }
-    const fallbacks = (Array.isArray(obj.fallbacks) ? obj.fallbacks : []).map(normalizeFallback).filter(Boolean) as string[];
+    const fallbacks = (Array.isArray(obj.fallbacks) ? obj.fallbacks : []).map(normalizeFallback).filter((f): f is RoutingFallback => f !== null);
     const scopeRaw = String(obj.scope ?? 'global');
     const scope = scopes.has(scopeRaw) ? scopeRaw as RoutingRule['scope'] : 'global';
     if (scope !== scopeRaw) warnings.push(`${name}: unknown scope "${scopeRaw}" normalized to global.`);

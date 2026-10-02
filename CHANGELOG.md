@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.8 — Build 26100220
+
+- Added Bifrost 2.2.3 fallback object form `{ provider, model, key_id }` and key pinning in the Fallback inspector.
+- `config.json` export/import resolves pinned `key_id` <-> `provider_key_name`.
+- Added diagnostics for a fallback without provider (Bifrost 2.2.4 rejects it) and for pinned fallbacks (Bifrost <= 2.2.2 cannot decode them).
+- AI drafts keep fallback key pins and drop fallbacks without provider.
+
 ## 0.2.2 — Build 26070619
 
 - Updated build number after checking Europe/Berlin time.

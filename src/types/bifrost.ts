@@ -9,6 +9,23 @@ export interface RoutingTarget {
   weight: number;
 }
 
+/**
+ * Fallback entry, Bifrost >= 2.2.3. Legacy form is the string `"provider/model"`
+ * (`"provider/"` keeps the incoming model). The object form additionally pins a
+ * provider key. Pinning requires Bifrost 2.2.3+ — earlier releases fail to
+ * decode the row and disable all routing rules.
+ * config.json uses `provider_key_name` instead of `key_id`.
+ */
+export interface RoutingFallbackObject {
+  provider: string;
+  model?: string;
+  key_id?: string;
+  /** config.json alias for `key_id`, resolved to a key id when the config loads. Accepted on import. */
+  provider_key_name?: string;
+}
+
+export type RoutingFallback = string | RoutingFallbackObject;
+
 export type TriggerKind =
   | 'cel'
   | 'provider'
@@ -27,7 +44,7 @@ export interface RoutingRule {
   chain_rule: boolean;
   cel_expression: string;
   targets: RoutingTarget[];
-  fallbacks: string[];
+  fallbacks: RoutingFallback[];
   scope: RuleScope;
   scope_id?: string | null;
   priority: number;

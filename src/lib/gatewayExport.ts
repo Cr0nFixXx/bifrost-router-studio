@@ -6,7 +6,14 @@
  * Bifrost's full CEL condition language, so conditions are preserved as comments
  * (LiteLLM YAML) or a `condition` field (model-groups JSON) for reference.
  */
-import type { ProviderConfig, RoutingRule, RoutingTarget } from '@/types/bifrost';
+import type { ProviderConfig, RoutingFallback, RoutingRule, RoutingTarget } from '@/types/bifrost';
+import { fallbackToParts } from './modelRefs';
+
+/** Fallback entries have no provider prefix in these formats — keep the model, else the bare provider. */
+function fallbackModelName(fb: RoutingFallback): string {
+  const { provider, model } = fallbackToParts(fb);
+  return model ?? provider;
+}
 
 function slug(s: string): string {
   return (
@@ -60,7 +67,7 @@ export function toLiteLLM(rules: RoutingRule[], providers: ProviderConfig[] = []
     if (rule.fallbacks.length) {
       fallbacks.push({
         group,
-        targets: rule.fallbacks.map((f) => (f.includes('/') ? f.split('/').pop()! : f)),
+        targets: rule.fallbacks.map(fallbackModelName),
       });
     }
   }
@@ -109,7 +116,7 @@ export function toOpenAIModelGroups(rules: RoutingRule[], providers: ProviderCon
           name: slug(r.name) + '-' + r.id,
           members,
           weights,
-          fallbacks: r.fallbacks,
+          fallbacks: r.fallbacks.map(fallbackModelName),
         };
         if (r.cel_expression && r.cel_expression.trim() && r.cel_expression.trim() !== 'true') {
           group.condition = r.cel_expression;

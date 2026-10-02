@@ -20,7 +20,7 @@ When proposing rules, return ONE fenced JSON block only. Use this exact schema:
       "targets": [
         { "provider": "provider-id", "model": "model-id", "weight": 1 }
       ],
-      "fallbacks": ["provider/model"],
+      "fallbacks": ["provider/model", { "provider": "provider-id", "model": "model-id", "key_id": "optional-pinned-key" }],
       "scope": "global",
       "scope_id": null,
       "priority": 10
@@ -39,6 +39,7 @@ Target weight rules:
 - Never output multiple targets all with weight 1 unless there is only one target.
 
 Do NOT return separate conditions/logic/target objects. Do NOT use singular `target`. Always use `cel_expression`, `targets[]`, and `fallbacks[]`.
+Each `fallbacks[]` entry MUST name a provider: `"provider/model"`, or an object `{ "provider", "model", "key_id" }`. Omit `key_id` unless the user explicitly wants that fallback pinned to one provider key.
 If the user asks for many condition/logic nodes, express them as one nested `cel_expression` using `&&`, `||` and parentheses.
 Supported CEL fields include: `model`, `provider`, `request_type`, `headers["name"]`, `params["name"]`, `team_name`, `customer_id`, `virtual_key_name`, `budget_used`, `tokens_used`, `request`, `request_size`, `time.hour`, `complexity_tier`.
 Avoid unsupported forms like `request.model`, `request.headers`, `request.body`, `request.url.path`, `has()`, `size()`, `int()`.

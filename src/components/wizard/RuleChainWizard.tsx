@@ -20,6 +20,7 @@ import {
 import { useStore } from '@/store/useStore';
 import { Modal, Button, Chip } from '@/components/ui/primitives';
 import { compileGroup, newCondition, newGroup, parseExpression, validateCEL } from '@/lib/cel';
+import { fallbackFromParts, fallbackToParts } from '@/lib/modelRefs';
 import { newId } from '@/lib/nodeFactory';
 import { rulesToWorkflow } from '@/lib/bifrostMapper';
 import type { CELComparison, CELCondition, CELField, CELGroup, TriggerKind } from '@/types/bifrost';
@@ -87,8 +88,8 @@ export function RuleChainWizard() {
       tier: 'COMPLEX',
       targets: wizardDraft.targets.map((t) => ({ provider: t.provider ?? '', model: t.model ?? '', weight: t.weight ?? 1 })),
       fallbacks: wizardDraft.fallbacks.map((f) => {
-        const [provider, ...modelParts] = f.split('/');
-        return { provider, model: modelParts.join('/') };
+        const { provider, model } = fallbackToParts(f);
+        return { provider, model: model ?? '' };
       }),
     });
     setStep(1);
@@ -132,7 +133,7 @@ export function RuleChainWizard() {
         chain_rule: false,
         cel_expression: celExpression(),
         targets: form.targets.map((t) => ({ provider: t.provider, model: t.model, weight: t.weight })),
-        fallbacks: form.fallbacks.map((f) => [f.provider, f.model].filter(Boolean).join('/')).filter(Boolean),
+        fallbacks: form.fallbacks.map((f) => fallbackFromParts(f.provider, f.model)).filter(Boolean),
         scope: 'global',
         scope_id: null,
         priority: 0,

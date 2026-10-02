@@ -59,6 +59,22 @@ describe('normalizeAiDraft', () => {
   });
 
 
+  it('keeps a pinned fallback key and drops fallbacks without provider', () => {
+    const normalized = normalizeAiDraft({
+      type: 'rule_draft',
+      rules: [{
+        name: 'Pinned',
+        cel_expression: 'true',
+        targets: [{ provider: 'openai', model: 'gpt-4o', weight: 1 }],
+        fallbacks: [
+          { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' },
+          { model: 'no-provider-model' },
+        ],
+      }],
+    });
+    expect(normalized.rules[0].fallbacks).toEqual([{ provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }]);
+  });
+
   it('replaces non-UUID AI rule ids with UUIDs', () => {
     const normalized = normalizeAiDraft({
       type: 'rule_draft',

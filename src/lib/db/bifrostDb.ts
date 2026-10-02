@@ -16,6 +16,7 @@
  */
 import { openDatabase, type Database } from '@/lib/sqljs/loader';
 import { celToBifrostQuery, isUsableBifrostQuery } from '@/lib/bifrostQuery';
+import { fallbackFromParts, fallbackToParts, fallbackToRef } from '@/lib/modelRefs';
 import type { SqlValue } from 'sql.js';
 import type {
   BifrostConfig,
@@ -385,7 +386,7 @@ export class BifrostDb {
       chain_rule: toBool(r.chain_rule, false),
       cel_expression: r.cel_expression,
       targets: this.nativeTargetsForRule(String(r.id)),
-      fallbacks: parseJson<string[]>(r.fallbacks, []),
+      fallbacks: parseJson<RoutingRule['fallbacks']>(r.fallbacks, []),
       scope: (r.scope as RoutingRule['scope']) ?? 'global',
       scope_id: r.scope_id ?? null,
       priority: Number(r.priority ?? 0),
@@ -798,14 +799,47 @@ export class BifrostDb {
 
   /* --------------------- config.json projection --------------------- */
 
+  /** `key_id` -> `config_keys.name`. config.json pins keys by name, the DB by id. */
+  private keyNameById(): Map<string, string> {
+    const names = new Map<string, string>();
+    if (!this.tableExists('config_keys') || !this.hasColumn('config_keys', 'name')) return names;
+    for (const row of this.all<{ key_id: string | null; name: string | null }>('SELECT key_id, name FROM config_keys')) {
+      if (row.key_id && row.name) names.set(String(row.key_id), String(row.name));
+    }
+    return names;
+  }
+
   exportConfig(): BifrostConfig {
     const providers: Record<string, ProviderConfig> = {};
     for (const p of this.listProviders()) providers[p.id] = p;
-    return { providers, governance: { routing_rules: this.listRules() } };
+    const names = this.keyNameById();
+    const rules = this.listRules().map((rule) => ({
+      ...rule,
+      // Unresolvable pins are dropped rather than emitted with a raw key_id — config.json wants the name.
+      fallbacks: rule.fallbacks.map((fb) => {
+        const { provider, model, key_id } = fallbackToParts(fb);
+        const name = key_id ? names.get(key_id) : undefined;
+        if (!provider || !key_id || !name) return fallbackToRef(fb);
+        return { provider, ...(model ? { model } : {}), provider_key_name: name };
+      }),
+    }));
+    return { providers, governance: { routing_rules: rules } };
   }
 
   importConfig(config: BifrostConfig): { rules: number; providers: number } {
-    for (const rule of config.governance?.routing_rules ?? []) this.createRule(rule);
+    const keyIds = new Map(Array.from(this.keyNameById(), ([keyId, name]) => [name, keyId]));
+    for (const raw of config.governance?.routing_rules ?? []) {
+      const rule: RoutingRule = {
+        ...raw,
+        fallbacks: raw.fallbacks.map((fb) => {
+          if (!fb || typeof fb !== 'object') return fb;
+          const { provider, model } = fallbackToParts(fb);
+          const keyId = fb.key_id ?? (fb.provider_key_name ? keyIds.get(fb.provider_key_name) : undefined);
+          return fallbackFromParts(provider, model, keyId);
+        }).filter((fb) => fb !== ''),
+      };
+      this.createRule(rule);
+    }
     for (const [id, prov] of Object.entries(config.providers ?? {})) {
       this.upsertProvider({ ...prov, id });
     }

@@ -3,7 +3,7 @@
  *
  *   Trigger node  ->  RoutingRule (cel_expression, scope, priority, chain_rule)
  *   Target node   ->  rule.targets[]   (provider/model/weight)
- *   Fallback node ->  rule.fallbacks[] ("provider/model" strings, in order)
+ *   Fallback node ->  rule.fallbacks[] ("provider/model" strings, or pinned objects, in order)
  *   Complexity    ->  a Trigger whose CEL is built from complexity_tier
  *
  * This is the single source of truth for converting both directions so the
@@ -21,6 +21,7 @@ import type {
   WFNode,
 } from '@/types/workflow';
 import { compileGroup, emitCondition, parseExpression } from './cel';
+import { fallbackToParts } from './modelRefs';
 
 const handle = (e: Edge) => (e.sourceHandle ?? 'out').split('.').pop() ?? 'out';
 
@@ -297,14 +298,13 @@ export function rulesToWorkflow(
     });
 
     if (rule.fallbacks.length > 0) {
-      const [prov, ...modelParts] = rule.fallbacks[0].split('/');
-      const model = modelParts.join('/');
+      const { provider: prov, model } = fallbackToParts(rule.fallbacks[0]);
       const fbId = localId('fallback');
       nodes.push({
         id: fbId,
         type: 'fallback',
         position: { x: startX + 1640, y: ty + 60 },
-        data: { kind: 'fallback', label: rule.fallbacks.length > 1 ? `${rule.fallbacks.length} Fallbacks` : (model || prov || 'Fallback'), providerId: prov, modelId: model, order: 0, fallbacks: rule.fallbacks },
+        data: { kind: 'fallback', label: rule.fallbacks.length > 1 ? `${rule.fallbacks.length} Fallbacks` : (model || prov || 'Fallback'), providerId: prov, modelId: model ?? '', order: 0, fallbacks: rule.fallbacks },
       });
       edges.push({
         id: `${targetId}-${fbId}`,

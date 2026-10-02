@@ -26,6 +26,14 @@ describe('validation engine', () => {
     expect(diags.filter((d) => d.level === 'error')).toHaveLength(0);
   });
 
+  it('flags a fallback without provider and warns about a pinned fallback key', () => {
+    const blank = fb('f');
+    (blank.data as any).fallbacks = ['', { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }];
+    const diags = validateGraph([trigger('t'), target('tg'), blank], [edge('t', 'tg'), edge('tg', 'f', 'fbout')]);
+    expect(diags.some((d) => d.level === 'error' && d.title === 'Fallback without provider')).toBe(true);
+    expect(diags.some((d) => d.title === 'Pinned fallback key')).toBe(true);
+  });
+
   it('warns when target weights do not sum to 1', () => {
     const nodes = [trigger('t'), target('tg', 0.5)];
     const edges = [edge('t', 'tg')];

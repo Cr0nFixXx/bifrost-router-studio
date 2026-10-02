@@ -167,6 +167,57 @@ describe('BifrostDb (sql.js)', () => {
 
 
 
+  it('persists pinned fallbacks and projects key ids to config.json key names', () => {
+    const pinned = [{ provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'key-1' }];
+
+    // Studio schema: object form survives a create/read roundtrip untouched.
+    const studio = newDb();
+    studio.createRule(sampleRule({ fallbacks: pinned }));
+    expect(studio.listRules()[0].fallbacks).toEqual(pinned);
+
+    // Native schema: the DB row keeps key_id, config.json emits provider_key_name.
+    const raw = new SQL.Database();
+    raw.run(`
+      CREATE TABLE routing_rules (
+        id varchar(255) PRIMARY KEY, config_hash varchar(255), name varchar(255) NOT NULL,
+        description TEXT, enabled numeric NOT NULL DEFAULT true, cel_expression TEXT NOT NULL,
+        fallbacks TEXT, query TEXT, scope varchar(50) NOT NULL, scope_id varchar(255),
+        priority INTEGER NOT NULL DEFAULT 0, created_at datetime NOT NULL,
+        updated_at datetime NOT NULL, chain_rule numeric NOT NULL DEFAULT false
+      );
+      CREATE TABLE routing_targets (rule_id varchar(255) NOT NULL, provider varchar(255), model varchar(255), key_id varchar(255), weight REAL NOT NULL DEFAULT 1);
+      CREATE TABLE config_providers (id integer PRIMARY KEY AUTOINCREMENT, name varchar(50) NOT NULL, custom_provider_config_json text, status varchar(50), created_at datetime NOT NULL, updated_at datetime NOT NULL);
+      CREATE TABLE config_keys (id integer PRIMARY KEY AUTOINCREMENT, name varchar(255) NOT NULL, provider_id integer NOT NULL, provider varchar(50), key_id varchar(255) NOT NULL, value text NOT NULL, models_json text, weight real, enabled numeric DEFAULT true, created_at datetime NOT NULL, updated_at datetime NOT NULL);
+    `);
+    raw.run(
+      `INSERT INTO routing_rules
+       (id, config_hash, name, description, enabled, cel_expression, fallbacks, query, scope, scope_id, priority, created_at, updated_at, chain_rule)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['pin-1', 'hash-1', 'Pinned', '', 1, 'provider == "openai"', JSON.stringify(pinned), null, 'global', null, 0, '2026-01-01', '2026-01-01', 0],
+    );
+    raw.run(
+      'INSERT INTO config_keys (name, provider_id, provider, key_id, value, models_json, weight, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      ['default', 1, 'vertex', 'key-1', 'no_key', '[]', 1, 1, '2026-01-01', '2026-01-01'],
+    );
+
+    const native = BifrostDb.wrap(raw);
+    expect(native.listRules()[0].fallbacks).toEqual(pinned);
+    expect(native.exportConfig().governance.routing_rules[0].fallbacks)
+      .toEqual([{ provider: 'vertex', model: 'gemini-2.5-pro', provider_key_name: 'default' }]);
+
+    // ...and back: provider_key_name resolves to the key id again.
+    const config = native.exportConfig();
+    native.deleteRule('pin-1');
+    native.importConfig(config);
+    expect(native.listRules()[0].fallbacks).toEqual([{ provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'key-1' }]);
+  });
+
+  it('drops an unresolvable pin instead of exporting a raw key id', () => {
+    const db = newDb();
+    db.createRule(sampleRule({ fallbacks: [{ provider: 'vertex', key_id: 'gone' }] }));
+    expect(db.exportConfig().governance.routing_rules[0].fallbacks).toEqual(['vertex/']);
+  });
+
   it('backfills missing native routing_rules.query values from CEL', () => {
     const raw = new SQL.Database();
     raw.run(`

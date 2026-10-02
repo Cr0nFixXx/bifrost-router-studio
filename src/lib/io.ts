@@ -10,6 +10,7 @@ import type { RoutingRule } from '@/types/bifrost';
 import type { WFNode } from '@/types/workflow';
 import type { Edge } from 'reactflow';
 import { workflowToRules, rulesToConfig, rulesToWorkflow } from './bifrostMapper';
+import { fallbackToRef } from './modelRefs';
 
 export interface WorkspaceProject {
   app: 'bifrost-router-studio';
@@ -83,7 +84,9 @@ export function exportWorkspaceXML(project: Omit<WorkspaceProject, 'app' | 'vers
               '@_weight': t.weight,
             })),
           },
-          Fallbacks: { Fallback: r.fallbacks.map((f) => ({ '#text': f })) },
+          // ponytail: XML workspace export is legacy-shape only — pinned keys are dropped here.
+          // Add @_key_id attributes when a consumer actually needs pins to survive an XML roundtrip.
+          Fallbacks: { Fallback: r.fallbacks.map((f) => ({ '#text': fallbackToRef(f) })) },
         })),
       },
     },

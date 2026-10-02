@@ -5,9 +5,10 @@
  * targets, weight sums != 1, invalid CEL, cycles in the fallback chain, and missing scope IDs.
  */
 import type { Edge } from 'reactflow';
-import type { WFNode } from '@/types/workflow';
+import type { FallbackNodeData, WFNode } from '@/types/workflow';
 import { validateCEL } from './cel';
 import { isRuleUid } from './ruleIds';
+import { fallbackFromParts, fallbackToParts } from './modelRefs';
 
 export type DiagnosticLevel = 'error' | 'warning' | 'info';
 
@@ -127,6 +128,29 @@ export function validateGraph(nodes: WFNode[], edges: Edge[]): Diagnostic[] {
         detail: 'Fallbacks are terminal in Bifrost. This edge is informational only.',
       });
     }
+    // Bifrost >= 2.2.4 rejects a rule whose fallback has no provider.
+    const data = fb.data as FallbackNodeData;
+    const entries = (data.fallbacks?.length ? data.fallbacks : [fallbackFromParts(data.providerId, data.modelId)]).map(fallbackToParts);
+    entries.forEach((entry, idx) => {
+      if (!entry.provider) {
+        diags.push({
+          id: `fb-no-provider-${fb.id}-${idx}`,
+          level: 'error',
+          nodeIds: [fb.id],
+          title: 'Fallback without provider',
+          detail: `Fallback #${idx + 1} has no provider. Bifrost rejects the rule on create/update.`,
+        });
+      }
+      if (entry.key_id) {
+        diags.push({
+          id: `fb-pinned-${fb.id}-${idx}`,
+          level: 'warning',
+          nodeIds: [fb.id],
+          title: 'Pinned fallback key',
+          detail: `Fallback #${idx + 1} pins key "${entry.key_id}". Bifrost 2.2.2 and older cannot decode pinned fallbacks and would disable all routing rules on downgrade.`,
+        });
+      }
+    });
   });
 
   // 5) CEL validation on triggers.

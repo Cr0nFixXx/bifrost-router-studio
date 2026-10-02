@@ -82,6 +82,15 @@ describe('toOpenAIModelGroups', () => {
     expect(g.members).toContain('m1');
   });
 
+  it('handles pinned object fallbacks', () => {
+    const cfg = toOpenAIModelGroups(
+      [rule('a', { targets: [{ model: 'm1', weight: 1 }], fallbacks: [{ provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }] })],
+    );
+    expect(cfg.model_groups[0].fallbacks).toEqual(['gemini-2.5-pro']);
+    expect(toLiteLLM([rule('a', { targets: [{ provider: 'openai', model: 'gpt-4o', weight: 1 }], fallbacks: [{ provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }] })]))
+      .toContain('"gemini-2.5-pro"');
+  });
+
   it('omits disabled rules', () => {
     const cfg = toOpenAIModelGroups([rule('a', { enabled: false })]);
     expect(cfg.model_groups).toHaveLength(0);

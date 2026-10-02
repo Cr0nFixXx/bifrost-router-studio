@@ -10,7 +10,7 @@ import type { RoutingRule } from '@/types/bifrost';
 import type { WFNode } from '@/types/workflow';
 import type { Edge } from 'reactflow';
 import { workflowToRules, rulesToConfig, rulesToWorkflow } from './bifrostMapper';
-import { fallbackToRef } from './modelRefs';
+import { fallbackFromParts, fallbackToParts, fallbackToRef } from './modelRefs';
 
 export interface WorkspaceProject {
   app: 'bifrost-router-studio';
@@ -84,9 +84,18 @@ export function exportWorkspaceXML(project: Omit<WorkspaceProject, 'app' | 'vers
               '@_weight': t.weight,
             })),
           },
-          // ponytail: XML workspace export is legacy-shape only — pinned keys are dropped here.
-          // Add @_key_id attributes when a consumer actually needs pins to survive an XML roundtrip.
-          Fallbacks: { Fallback: r.fallbacks.map((f) => ({ '#text': fallbackToRef(f) })) },
+          // '#text' stays the legacy "provider/model" form; @_key_id carries the pin.
+          Fallbacks: {
+            Fallback: r.fallbacks.map((f) => {
+              const { provider, model, key_id } = fallbackToParts(f);
+              return {
+                ...(provider ? { '@_provider': provider } : {}),
+                ...(model ? { '@_model': model } : {}),
+                ...(key_id ? { '@_key_id': key_id } : {}),
+                '#text': fallbackToRef(f),
+              };
+            }),
+          },
         })),
       },
     },
@@ -105,27 +114,30 @@ export function parseWorkspaceXML(text: string): WorkspaceProject {
   const ruleNodes = toArray(root.RoutingRules?.Rule);
 
   const rules: RoutingRule[] = ruleNodes.map((r: any): RoutingRule => {
-    const attrs = r?.['@_'] ?? {};
+    // Attributes land flat next to the element content (fast-xml-parser only groups them with attributeGroupPrefix).
+    const attr = (key: string): string | undefined => r?.[`@_${key}`] ?? undefined;
     const targets = toArray(r?.Targets?.Target).map((t: any) => ({
       provider: t?.['@_provider'] || undefined,
       model: t?.['@_model'] || undefined,
       weight: Number(t?.['@_weight'] ?? 1),
     }));
-    const fallbacks = toArray(r?.Fallbacks?.Fallback).map((f: any) =>
-      typeof f === 'string' ? f : f?.['#text'] ?? '',
-    );
+    const fallbacks = toArray(r?.Fallbacks?.Fallback).map((f: any) => {
+      if (typeof f === 'string') return f.trim();
+      const fromText = fallbackToParts(String(f?.['#text'] ?? ''));
+      return fallbackFromParts(f?.['@_provider'] || fromText.provider, f?.['@_model'] || fromText.model, f?.['@_key_id']);
+    });
     return {
-      id: attrs.id ?? `rule_${Math.random().toString(36).slice(2, 8)}`,
-      name: attrs.name ?? 'Imported Rule',
-      description: attrs.description,
-      enabled: attrs.enabled !== 'false',
-      chain_rule: attrs.chainRule === 'true',
+      id: attr('id') ?? `rule_${Math.random().toString(36).slice(2, 8)}`,
+      name: attr('name') ?? 'Imported Rule',
+      description: attr('description'),
+      enabled: attr('enabled') !== 'false',
+      chain_rule: attr('chainRule') === 'true',
       cel_expression: typeof r?.CELExpression === 'string' ? r.CELExpression : '',
       targets,
       fallbacks: fallbacks.filter(Boolean),
-      scope: (attrs.scope as RoutingRule['scope']) ?? 'global',
-      scope_id: attrs.scope_id ?? null,
-      priority: Number(attrs.priority ?? 0),
+      scope: (attr('scope') as RoutingRule['scope']) ?? 'global',
+      scope_id: attr('scope_id') ?? null,
+      priority: Number(attr('priority') ?? 0),
     };
   });
 

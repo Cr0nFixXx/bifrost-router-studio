@@ -212,10 +212,10 @@ describe('BifrostDb (sql.js)', () => {
     expect(native.listRules()[0].fallbacks).toEqual([{ provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'key-1' }]);
   });
 
-  it('drops an unresolvable pin instead of exporting a raw key id', () => {
+  it('keeps the key id when no config key name can be resolved', () => {
     const db = newDb();
     db.createRule(sampleRule({ fallbacks: [{ provider: 'vertex', key_id: 'gone' }] }));
-    expect(db.exportConfig().governance.routing_rules[0].fallbacks).toEqual(['vertex/']);
+    expect(db.exportConfig().governance.routing_rules[0].fallbacks).toEqual([{ provider: 'vertex', key_id: 'gone' }]);
   });
 
   it('backfills missing native routing_rules.query values from CEL', () => {

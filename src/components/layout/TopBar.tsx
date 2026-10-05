@@ -30,7 +30,7 @@ import {
   Minimize2,
   Maximize2,
 } from 'lucide-react';
-import { useStore } from '@/store/useStore';
+import { getDb, useStore } from '@/store/useStore';
 import { useAiAssistant } from '@/store/useAiAssistant';
 import { Toggle, Button, IconButton } from '@/components/ui/primitives';
 import {
@@ -111,7 +111,11 @@ export function TopBar() {
   const doExport = async (kind: 'workspace' | 'config' | 'xml' | 'litellm' | 'openai' | 'png' | 'jpg' | 'markdown' | 'selected' | 'db') => {
     if (kind === 'db') { downloadDb(); setExportOpen(false); return; }
     if (kind === 'workspace') downloadFile(`${baseName()}.workspace.json`, exportWorkspaceJSON({ name: dbFileName ?? 'project', direction, nodes, edges }));
-    if (kind === 'config') downloadFile('config.json', exportConfigJSON(nodes, edges, providerMap));
+    if (kind === 'config') {
+      const db = getDb();
+      const keyNames = Object.fromEntries(db ? db.keyNameById() : []);
+      downloadFile('config.json', exportConfigJSON(nodes, edges, providerMap, keyNames));
+    }
     if (kind === 'xml') downloadFile(`${baseName()}.xml`, exportWorkspaceXML({ name: dbFileName ?? 'project', direction, nodes, edges }), 'application/xml');
     if (kind === 'litellm') { downloadFile(`${baseName()}.litellm.yaml`, toLiteLLM(rules, providers), 'text/yaml'); setExportOpen(false); return; }
     if (kind === 'openai') { downloadFile(`${baseName()}.model-groups.json`, JSON.stringify(toOpenAIModelGroups(rules, providers), null, 2), 'application/json'); setExportOpen(false); return; }

@@ -32,9 +32,9 @@ export function exportWorkspaceJSON(project: Omit<WorkspaceProject, 'app' | 'ver
   return JSON.stringify(payload, null, 2);
 }
 
-export function exportConfigJSON(nodes: WFNode[], edges: Edge[], providers: Record<string, unknown>): string {
+export function exportConfigJSON(nodes: WFNode[], edges: Edge[], providers: Record<string, unknown>, keyNames: Record<string, string> = {}): string {
   const rules = workflowToRules(nodes, edges);
-  return JSON.stringify(rulesToConfig(rules, providers), null, 2);
+  return JSON.stringify(rulesToConfig(rules, providers, keyNames), null, 2);
 }
 
 export function parseWorkspaceJSON(text: string): WorkspaceProject {

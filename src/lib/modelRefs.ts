@@ -74,3 +74,15 @@ export function fallbackFromParts(provider: string | null | undefined, model?: s
   if (k) return { provider: p, ...(m ? { model: m } : {}), key_id: k };
   return p ? `${p}/${m}` : '';
 }
+
+/**
+ * config.json form of a fallback: Bifrost pins keys by `provider_key_name`, the DB by
+ * `key_id`. Without a resolvable name the entry keeps `key_id` so no pin is lost.
+ */
+export function fallbackToConfigForm(fb: RoutingFallback, keyName?: string): RoutingFallback {
+  const { provider, model, key_id } = fallbackToParts(fb);
+  if (!provider) return '';
+  if (keyName) return { provider, ...(model ? { model } : {}), provider_key_name: keyName };
+  if (key_id) return { provider, ...(model ? { model } : {}), key_id };
+  return fallbackToRef(fb);
+}

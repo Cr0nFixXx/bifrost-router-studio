@@ -106,6 +106,15 @@ describe('bifrostMapper', () => {
     expect(roundTrip.fallbacks).toEqual(['anthropic/claude', { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }]);
   });
 
+  it('projects pinned fallbacks to provider_key_name in the config.json shape', () => {
+    const rules = [{ ...rule(), fallbacks: ['anthropic/claude', { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }] }];
+    expect(rulesToConfig(rules, {}, { k1: 'prod-key' }).governance.routing_rules[0].fallbacks)
+      .toEqual(['anthropic/claude', { provider: 'vertex', model: 'gemini-2.5-pro', provider_key_name: 'prod-key' }]);
+    // No key names available: the pin survives as key_id rather than being dropped.
+    expect(rulesToConfig(rules).governance.routing_rules[0].fallbacks)
+      .toEqual(['anthropic/claude', { provider: 'vertex', model: 'gemini-2.5-pro', key_id: 'k1' }]);
+  });
+
   it('imports AI-generated complex CEL into real condition/logic nodes', () => {
     const aiRule = rule({
       id: 'ai-complex',

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.8 — Build 26100222
+## 0.2.8 — Build 26100506
 
 - Added Bifrost 2.2.3 fallback object form `{ provider, model, key_id }` and key pinning in the Fallback inspector.
 - `config.json` export/import resolves pinned `key_id` <-> `provider_key_name`.
@@ -8,6 +8,7 @@
 - AI drafts keep fallback key pins and drop fallbacks without provider.
 - Workspace XML export/import carries pinned fallback keys via `@_key_id`.
 - Fixed XML workspace import dropping every rule attribute (id, name, priority, scope, enabled).
+- TopBar config.json export now resolves pinned fallback `key_id` to `provider_key_name` via `config_keys`.
 
 ## 0.2.2 — Build 26070619
 

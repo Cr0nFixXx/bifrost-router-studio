@@ -21,7 +21,7 @@ import type {
   WFNode,
 } from '@/types/workflow';
 import { compileGroup, emitCondition, parseExpression } from './cel';
-import { fallbackToParts } from './modelRefs';
+import { fallbackToConfigForm, fallbackToParts } from './modelRefs';
 
 const handle = (e: Edge) => (e.sourceHandle ?? 'out').split('.').pop() ?? 'out';
 
@@ -146,10 +146,22 @@ export function workflowToRules(nodes: WFNode[], edges: Edge[]): RoutingRule[] {
 
 /* ----------------------- config.json <-> graph --------------------- */
 
-export function rulesToConfig(rules: RoutingRule[], providers: Record<string, unknown> = {}) {
+/**
+ * `keyNames` maps a native `routing_targets.key_id` to its `config_keys.name`; config.json
+ * pins fallbacks by name, the DB by id.
+ */
+export function rulesToConfig(rules: RoutingRule[], providers: Record<string, unknown> = {}, keyNames: Record<string, string> = {}) {
   return {
     providers,
-    governance: { routing_rules: rules },
+    governance: {
+      routing_rules: rules.map((rule) => ({
+        ...rule,
+        fallbacks: rule.fallbacks.map((fb) => {
+          const { key_id } = fallbackToParts(fb);
+          return fallbackToConfigForm(fb, key_id ? keyNames[key_id] : undefined);
+        }).filter(Boolean),
+      })),
+    },
   };
 }
 

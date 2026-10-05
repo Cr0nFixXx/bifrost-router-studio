@@ -16,7 +16,7 @@
  */
 import { openDatabase, type Database } from '@/lib/sqljs/loader';
 import { celToBifrostQuery, isUsableBifrostQuery } from '@/lib/bifrostQuery';
-import { fallbackFromParts, fallbackToParts, fallbackToRef } from '@/lib/modelRefs';
+import { fallbackFromParts, fallbackToConfigForm, fallbackToParts } from '@/lib/modelRefs';
 import type { SqlValue } from 'sql.js';
 import type {
   BifrostConfig,
@@ -800,7 +800,7 @@ export class BifrostDb {
   /* --------------------- config.json projection --------------------- */
 
   /** `key_id` -> `config_keys.name`. config.json pins keys by name, the DB by id. */
-  private keyNameById(): Map<string, string> {
+  keyNameById(): Map<string, string> {
     const names = new Map<string, string>();
     if (!this.tableExists('config_keys') || !this.hasColumn('config_keys', 'name')) return names;
     for (const row of this.all<{ key_id: string | null; name: string | null }>('SELECT key_id, name FROM config_keys')) {
@@ -815,12 +815,9 @@ export class BifrostDb {
     const names = this.keyNameById();
     const rules = this.listRules().map((rule) => ({
       ...rule,
-      // Unresolvable pins are dropped rather than emitted with a raw key_id — config.json wants the name.
       fallbacks: rule.fallbacks.map((fb) => {
-        const { provider, model, key_id } = fallbackToParts(fb);
-        const name = key_id ? names.get(key_id) : undefined;
-        if (!provider || !key_id || !name) return fallbackToRef(fb);
-        return { provider, ...(model ? { model } : {}), provider_key_name: name };
+        const { key_id } = fallbackToParts(fb);
+        return fallbackToConfigForm(fb, key_id ? names.get(key_id) : undefined);
       }),
     }));
     return { providers, governance: { routing_rules: rules } };

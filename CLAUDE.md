@@ -116,7 +116,7 @@ Rule/Trigger nodes are metadata anchors only. Conditions are represented as dedi
 
 ## Versioning contract
 
-Current app version is `0.2.8`; do not change this version unless explicitly requested by the user. The build number must be updated for every code change using `YYMMDDHH` in Europe/Berlin time. Current build: `26100506`.
+Current app version is `0.2.9`; do not change this version unless explicitly requested by the user. The build number must be updated for every code change using `YYMMDDHH` in Europe/Berlin time. Current build: `26100507`.
 
 ## Dashboard/settings placement
 
@@ -128,7 +128,7 @@ Dashboard and Settings are top-level modal pages opened from the TopBar. They ar
 
 ## Build/version update
 
-Current version: `0.2.8`. Current build: `26100506`. Do not change version unless explicitly requested. Update build on every code change using Europe/Berlin `YYMMDDHH`.
+Current version: `0.2.9`. Current build: `26100507`. Do not change version unless explicitly requested. Update build on every code change using Europe/Berlin `YYMMDDHH`.
 
 ## User settings store
 
@@ -138,4 +138,33 @@ Current version: `0.2.8`. Current build: `26100506`. Do not change version unles
 
 The app remains browser-only by default. For user-requested server-side filepath support, an optional Node local bridge exists at `scripts/local-bridge.mjs` and can be started with `npm run bridge`. It exposes `/api/open?path=...` and `/api/list?path=...` under `BFRS_LOCAL_ROOT` by default. Absolute paths outside root require `BFRS_ALLOW_ABSOLUTE=1`.
 
-Current version: `0.2.8`. Current build: `26100506`.
+## API mode (live gateway sync)
+
+The ConnectScreen has **two exclusive modes**: SQLite file (default, unchanged) and a live Bifrost
+gateway via its management API. `connectionSource: 'file' | 'api'` in `useStore` decides which.
+
+- `src/lib/bifrostApi.ts` — the only module that talks to a gateway. `ApiRule` (GET) and
+  `ApiRuleCreate`/`ApiRuleUpdate` (POST/PUT) are deliberately separate types.
+- `src/lib/sync.ts` — pure diff/apply logic: `diffRules(local, remote)` → create/update/delete.
+  `toUpdateShape` strips `scope`/`scope_id`; `rejectionReason` refuses bad weights before pushing.
+- Transport is `bridgeTransport` (default; the bridge holds the token) or `directTransport`
+  (token from a session-only component field, never persisted).
+- Auto-sync is a debounced (800 ms) toggle in `useUserSettings.autoSync`, **off by default**.
+  `syncNow()` is always available from the TopBar.
+
+**API constraints that must not be broken** (verified against Bifrost docs 2026-10):
+- `PUT /api/routing/rules/{id}` is partial (no required fields) but supplying `targets`
+  **replaces the entire target list** → always send a full rule body, never a field delta.
+- The update schema has **no `scope`/`scope_id`** → a scope change is delete + create with a new id.
+- The GET shape carries `id`/`created_at`/`updated_at`, none of which the write schemas accept.
+  Never round-trip a GET response into a write; go through `toWriteShape`.
+- `query` is regenerated from CEL on every push so Bifrost's dashboard rule builder matches the canvas.
+- Fields the canvas does not model (`ttft_timeout_ms`, raw `query`) are ignored by the diff — a
+  server-only field must never trigger a push.
+- Bifrost <2.0.0 serves the same routes at `/api/governance/routing-rules`; the client falls back.
+
+The bridge is a **whitelist proxy**, not a generic `/api/*` forwarder: only `/api/version`,
+`/api/health`, `/api/routing/rules[/{id}]` and `/api/governance/routing-rules[/{id}]` pass through.
+Config comes from `BFRS_BIFROST_URL` + `BFRS_BIFROST_TOKEN` (or `BFRS_BIFROST_USER`/`_PASSWORD`).
+
+Current version: `0.2.9`. Current build: `26100507`.

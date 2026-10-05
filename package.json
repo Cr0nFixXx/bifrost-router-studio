@@ -1,7 +1,7 @@
 {
   "name": "bifrost-router-studio",
   "private": true,
-  "version": "0.2.8",
+  "version": "0.2.9",
   "type": "module",
   "description": "Client-side SQLite editor & visual planner for Bifrost AI Gateway routing rules. No backend — uses sql.js (WASM SQLite) to read/write the Bifrost DB file directly in the browser.",
   "scripts": {

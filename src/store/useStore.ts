@@ -26,7 +26,23 @@ import { validateGraph, type Diagnostic } from '@/lib/validation';
 import { autoLayout, type FlowDirection } from '@/lib/layout';
 import { rulesToWorkflow, workflowToRules } from '@/lib/bifrostMapper';
 import { reorderWithinGroup } from '@/lib/ruleOrder';
-import { diffRules, type RuleDiff } from '@/lib/diff';
+import { diffRules, type RuleDiff as HistoryDiff } from '@/lib/diff';
+import {
+  BifrostApi,
+  BifrostApiError,
+  apiRuleToRouting,
+  bridgeTransport,
+  directTransport,
+  fetchBridgeHealth,
+  type ApiTransport,
+  type BridgeHealth,
+} from '@/lib/bifrostApi';
+import {
+  applyDiff,
+  diffRules as diffRulesForSync,
+  diffIsEmpty,
+} from '@/lib/sync';
+import { useUserSettings } from '@/store/useUserSettings';
 import {
   saveSnapshot as persistSnapshot,
   listSnapshots,
@@ -43,6 +59,21 @@ import { downloadFile } from '@/lib/io';
 import { createRuleUid, isRuleUid } from '@/lib/ruleIds';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+
+export interface SyncStatus {
+  state: 'idle' | 'syncing' | 'error';
+  /** Changes not yet transferred to the gateway. */
+  pending: number;
+  lastSyncedAt: string | null;
+  error?: string;
+  /** Rules the diff refused to push (bad weights, missing scope_id, …). */
+  rejected: Array<{ id: string; name: string; reason: string }>;
+}
+
+export interface ApiConnectOptions {
+  transport: ApiTransport;
+  label: string;
+}
 
 interface HistorySnapshot {
   nodes: WFNode[];
@@ -98,7 +129,7 @@ const DEFAULT_SIM_INPUT: SimInput = {
 export interface DiffView {
   title: string;
   subtitle?: string;
-  diffs: RuleDiff[];
+  diffs: HistoryDiff[];
   onRestore?: () => void;
   restoreLabel?: string;
 }
@@ -143,6 +174,17 @@ interface StudioState {
   rules: RoutingRule[];
   providers: ProviderConfig[];
   modelCatalog: Array<{ id: string; provider?: string; label?: string; model?: string }>;
+
+  /* API connection (second source of truth: a live gateway, not a file) */
+  connectionSource: 'file' | 'api';
+  apiLabel: string | null;
+  syncStatus: SyncStatus;
+
+  connectApiViaBridge: (bridgeUrl: string) => Promise<void>;
+  connectApiDirect: (baseUrl: string, token: string) => Promise<void>;
+  checkBridge: (bridgeUrl: string) => Promise<BridgeHealth>;
+  syncNow: () => Promise<void>;
+  refreshFromApi: () => void;
 
   /* history */
   past: HistorySnapshot[];
@@ -240,7 +282,7 @@ interface StudioState {
   /* canvas -> rules projection + diffing */
   getCanvasRules: () => RoutingRule[];
   reorderRulesByIds: (ids: string[]) => void;
-  previewDbDiff: () => RuleDiff[];
+  previewDbDiff: () => HistoryDiff[];
   diffView: DiffView | null;
   showDiff: (view: DiffView) => void;
   closeDiff: () => void;
@@ -252,7 +294,7 @@ interface StudioState {
   saveSnapshot: (label?: string) => Promise<void>;
   restoreSnapshot: (id: string) => Promise<void>;
   deleteSnapshot: (id: string) => Promise<void>;
-  previewSnapshotDiff: (id: string) => Promise<RuleDiff[] | null>;
+  previewSnapshotDiff: (id: string) => Promise<HistoryDiff[] | null>;
   applyRuleset: (rules: RoutingRule[], providers?: ProviderConfig[]) => void;
 
   /* simulation */
@@ -264,10 +306,84 @@ interface StudioState {
 
 /* The live WASM database handle (kept out of reactive state). */
 let activeDb: BifrostDb | null = null;
+/** Set only in API mode; null in file mode. Also out of reactive state. */
+let activeApi: BifrostApi | null = null;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let simPlaybackTimer: ReturnType<typeof setInterval> | null = null;
 export const getDb = () => activeDb;
+export const getApi = () => activeApi;
 
 const snapshot = (s: StudioState): HistorySnapshot => ({ nodes: s.nodes, edges: s.edges });
+
+/**
+ * Pull rules from a live gateway and rebuild the canvas from them. Same path
+ * `refreshFromDb` takes for a file — the canvas, inspector, validation and undo
+ * do not care which of the two sources filled them.
+ */
+async function openApiSession(transport: ApiTransport, label: string): Promise<void> {
+  const store = useStore.getState();
+  useStore.setState({ connection: 'connecting', busy: true, error: null });
+  const api = new BifrostApi(transport);
+  try {
+    // Throws BifrostApiError(status 0) when the bridge or gateway is down.
+    const rules = await api.listRules();
+    activeApi = api;
+    activeDb = null;
+    const routingRules = rules.map(apiRuleToRouting);
+    const { nodes, edges } = rulesToWorkflow(routingRules, { dedupeConditions: !store.expertMode });
+    useStore.setState({
+      connection: 'connected',
+      busy: false,
+      connectionSource: 'api',
+      apiLabel: label,
+      dbFileName: null,
+      dbKind: 'api',
+      rules: routingRules,
+      providers: [],
+      nodes,
+      edges: syncChainEdges(nodes, edges),
+      dirty: false,
+      selectedNodeId: null,
+      syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [] },
+    });
+    useStore.getState().fetchModels();
+    useStore.getState().recompute();
+  } catch (err) {
+    const message = err instanceof BifrostApiError ? err.message : (err as Error).message;
+    useStore.setState({ connection: 'disconnected', busy: false, error: message });
+  }
+}
+
+/** Re-read the gateway after a successful push so the canvas mirrors it again. */
+function refreshFromApi(): void {
+  if (!activeApi) return;
+  const store = useStore.getState();
+  void activeApi.listRules().then((remote) => {
+    const routingRules = remote.map(apiRuleToRouting);
+    const { nodes, edges } = rulesToWorkflow(routingRules, { dedupeConditions: !store.expertMode });
+    useStore.setState({
+      rules: routingRules,
+      nodes,
+      edges: syncChainEdges(nodes, edges),
+      dirty: false,
+      selectedNodeId: null,
+    });
+    useStore.getState().recompute();
+  });
+}
+
+/**
+ * Debounced auto-sync. Latest state wins: a pending timer is replaced rather
+ * than queued, so dragging a node produces one PUT per gesture, not one per
+ * frame. Only fires when the user turned auto-sync on (default off).
+ */
+function scheduleSync(): void {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    void useStore.getState().syncNow();
+  }, 800);
+}
 
 
 function syncChainEdges(_nodes: WFNode[], edges: Edge[]): Edge[] {
@@ -369,6 +485,10 @@ export const useStore = create<StudioState>((set, get) => ({
   providers: [],
   modelCatalog: [],
 
+  connectionSource: 'file',
+  apiLabel: null,
+  syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [] },
+
   past: [],
   future: [],
   _lastCommit: null,
@@ -418,6 +538,89 @@ export const useStore = create<StudioState>((set, get) => ({
     }
   },
 
+  /* --------------------- live gateway (API mode) --------------------- */
+
+  checkBridge: async (bridgeUrl) => {
+    try {
+      return await fetchBridgeHealth(bridgeUrl);
+    } catch (err) {
+      return {
+        ok: false,
+        root: '',
+        port: 0,
+        host: '',
+        bifrost: { url: '', reachable: false, authOk: false, reason: (err as Error).message },
+      };
+    }
+  },
+
+  connectApiViaBridge: async (bridgeUrl) => {
+    const health = await get().checkBridge(bridgeUrl);
+    const b = health.bifrost;
+    if (!b) {
+      set({ error: 'Die Bridge läuft, kennt aber keine Bifrost-URL. Setze BFRS_BIFROST_URL und starte sie neu.' });
+      return;
+    }
+    if (!b.reachable) {
+      set({ error: `Bifrost ist unter ${b.url} nicht erreichbar. Läuft die Instanz?` });
+      return;
+    }
+    if (!b.authOk) {
+      set({ error: 'Der Management-Token der Bridge wird von Bifrost abgelehnt. Prüfe BFRS_BIFROST_TOKEN.' });
+      return;
+    }
+    await openApiSession(bridgeTransport(bridgeUrl), `Bridge ${bridgeUrl} → ${b.url}`);
+  },
+
+  connectApiDirect: async (baseUrl, token) => {
+    if (!token.trim()) {
+      set({ error: 'Für den Direktmodus wird ein Management-Token benötigt.' });
+      return;
+    }
+    await openApiSession(directTransport(baseUrl, token.trim()), baseUrl);
+  },
+
+  syncNow: async () => {
+    if (!activeApi) return;
+    if (get().syncStatus.state === 'syncing') return;
+    set({ syncStatus: { ...get().syncStatus, state: 'syncing', error: undefined } });
+    try {
+      const remote = await activeApi.listRules();
+      const local = get().rules.length ? get().rules : workflowToRules(get().nodes, get().edges);
+      const diff = diffRulesForSync(local, remote);
+      if (diffIsEmpty(diff)) {
+        set({
+          syncStatus: {
+            state: diff.rejected.length ? 'error' : 'idle',
+            pending: 0,
+            lastSyncedAt: new Date().toISOString(),
+            error: diff.rejected.length ? 'Einige Regeln wurden nicht übertragen.' : undefined,
+            rejected: diff.rejected,
+          },
+        });
+        return;
+      }
+      const result = await applyDiff(activeApi, diff);
+      const pending = result.failed;
+      set({
+        syncStatus: {
+          state: pending ? 'error' : 'idle',
+          pending,
+          lastSyncedAt: new Date().toISOString(),
+          error: result.error,
+          rejected: diff.rejected,
+        },
+        dirty: pending > 0,
+      });
+      if (!pending) get().refreshFromApi();
+    } catch (err) {
+      const message = err instanceof BifrostApiError ? err.message : (err as Error).message;
+      set({ syncStatus: { ...get().syncStatus, state: 'error', error: message } });
+    }
+  },
+
+  refreshFromApi,
+
   reconnectCached: async () => {
     set({ connection: 'connecting', busy: true, error: null });
     try {
@@ -432,10 +635,15 @@ export const useStore = create<StudioState>((set, get) => ({
   },
 
   disconnect: () => {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = null;
     activeDb?.close();
     activeDb = null;
+    activeApi = null;
     set({
       connection: 'disconnected',
+      connectionSource: 'file',
+      apiLabel: null,
       dbFileName: null,
       dbKind: null,
       nodes: [],
@@ -455,6 +663,7 @@ export const useStore = create<StudioState>((set, get) => ({
       canvasLocked: false,
       canvasMode: 'drag',
       dirty: false,
+      syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [] },
     });
   },
 
@@ -908,6 +1117,12 @@ export const useStore = create<StudioState>((set, get) => ({
   recompute: () => set({ diagnostics: validateGraph(get().nodes, get().edges) }),
   markDirty: () => {
     if (!get().dirty) set({ dirty: true });
+    // In API mode there is no DB handle to cache — the gateway is the sync
+    // target and auto-sync decides when to talk to it.
+    if (get().connectionSource === 'api') {
+      if (useUserSettings.getState().autoSync) scheduleSync();
+      return;
+    }
     const db = getDb();
     const name = get().dbFileName;
     if (db && name) cacheDb(db.exportBytes(), name).catch(() => {});

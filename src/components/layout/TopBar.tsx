@@ -29,8 +29,11 @@ import {
   Bot,
   Minimize2,
   Maximize2,
+  Cloud,
+  RefreshCw,
 } from 'lucide-react';
 import { getDb, useStore } from '@/store/useStore';
+import { useUserSettings } from '@/store/useUserSettings';
 import { useAiAssistant } from '@/store/useAiAssistant';
 import { Toggle, Button, IconButton } from '@/components/ui/primitives';
 import {
@@ -52,6 +55,12 @@ export function TopBar() {
   const dbFileName = useStore((s) => s.dbFileName);
   const dbKind = useStore((s) => s.dbKind);
   const dirty = useStore((s) => s.dirty);
+  const isApi = useStore((s) => s.connectionSource === 'api' && s.connection === 'connected');
+  const apiLabel = useStore((s) => s.apiLabel);
+  const syncStatus = useStore((s) => s.syncStatus);
+  const syncNow = useStore((s) => s.syncNow);
+  const autoSync = useUserSettings((s) => s.autoSync);
+  const setAutoSync = useUserSettings((s) => s.setAutoSync);
   const direction = useStore((s) => s.direction);
   const setDirection = useStore((s) => s.setDirection);
   const simplifyConditions = useStore((s) => s.simplifyConditions);
@@ -177,17 +186,45 @@ export function TopBar() {
       {/* DB identity */}
       <div className="flex items-center gap-2 min-w-0 max-w-[260px] shrink">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-neon/10 text-neon shrink-0">
-          <Database size={16} />
+          {isApi ? <Cloud size={16} /> : <Database size={16} />}
         </span>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-ink truncate leading-tight">{dbFileName ?? 'No database'}</div>
+          <div className="text-sm font-semibold text-ink truncate leading-tight">{isApi ? (apiLabel ?? 'Gateway') : (dbFileName ?? 'No database')}</div>
           <div className="flex items-center gap-1.5 text-[10px] text-ink-faint" role="status" aria-live="polite">
-            <span className={`h-1.5 w-1.5 rounded-full ${dirty ? 'bg-neon-amber' : 'bg-neon-green'}`} />
-            {dirty ? 'unsaved changes' : 'in sync'}
-            {dbKind && <span className="ml-1 opacity-70">· {dbKind}</span>}
+            {isApi ? (
+              <>
+                <span className={`h-1.5 w-1.5 rounded-full ${syncStatus.state === 'error' ? 'bg-neon-red' : syncStatus.state === 'syncing' ? 'bg-neon-amber' : dirty ? 'bg-neon-amber' : 'bg-neon-green'}`} />
+                {syncStatus.state === 'syncing'
+                  ? 'synchronisiert…'
+                  : syncStatus.state === 'error'
+                    ? `${syncStatus.pending} nicht übertragen`
+                    : dirty
+                      ? 'Änderungen ausstehend'
+                      : 'synchronisiert'}
+              </>
+            ) : (
+              <>
+                <span className={`h-1.5 w-1.5 rounded-full ${dirty ? 'bg-neon-amber' : 'bg-neon-green'}`} />
+                {dirty ? 'unsaved changes' : 'in sync'}
+                {dbKind && <span className="ml-1 opacity-70">· {dbKind}</span>}
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {isApi && (
+        <>
+          <Button variant="subtle" size="sm" onClick={() => void syncNow()} disabled={syncStatus.state === 'syncing'} title="Regeln jetzt an das Gateway übertragen">
+            {syncStatus.state === 'syncing' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            <span className="hidden 2xl:inline">Synchronisieren</span>
+          </Button>
+          <label className="flex items-center gap-1.5 text-[10px] text-ink-faint select-none" title="Jede Änderung automatisch übertragen (debounced)">
+            <input type="checkbox" className="accent-neon" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
+            Auto-Sync
+          </label>
+        </>
+      )}
 
       <div className="h-6 w-px bg-border" />
 
@@ -213,19 +250,24 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 min-w-0">
-        <Button variant="outline" size="sm" onClick={saveToDb} disabled={busy} title="Save changes to in-memory SQLite">
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span className="hidden 2xl:inline">Save</span>
-        </Button>
+        {/* No SQLite handle in API mode — the gateway is the target, not a file. */}
+        {!isApi && (
+          <Button variant="outline" size="sm" onClick={saveToDb} disabled={busy} title="Save changes to in-memory SQLite">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span className="hidden 2xl:inline">Save</span>
+          </Button>
+        )}
 
-        <Button variant="ghost" size="sm" onClick={openDbDiff} title="Show unsaved changes vs the database">
-          <GitCompare size={14} /> <span className="hidden 2xl:inline">Diff</span>
-        </Button>
+        {!isApi && (
+          <Button variant="ghost" size="sm" onClick={openDbDiff} title="Show unsaved changes vs the database">
+            <GitCompare size={14} /> <span className="hidden 2xl:inline">Diff</span>
+          </Button>
+        )}
 
         <Button variant="ghost" size="sm" onClick={() => setDashboardOpen(true)} title="Open dashboard">
           <BarChart3 size={14} /> <span className="hidden 2xl:inline">Dashboard</span>
         </Button>
 
-        <Button variant="ghost" size="sm" onClick={() => setSqlBrowserOpen(true)} title="Open SQL routing table browser">
+        <Button variant="ghost" size="sm" onClick={() => setSqlBrowserOpen(true)} title="Open SQL routing table browser" disabled={isApi}>
           <Database size={14} /> <span className="hidden 2xl:inline">SQL</span>
         </Button>
 
@@ -314,7 +356,7 @@ export function TopBar() {
           </Button>
           {exportOpen && (
             <Menu onClose={() => setExportOpen(false)}>
-              <MenuItem icon={<Database size={14} />} label="SQLite DB (.sqlite)" onClick={() => void doExport('db')} />
+              {!isApi && <MenuItem icon={<Database size={14} />} label="SQLite DB (.sqlite)" onClick={() => void doExport('db')} />}
               <div className="my-1 h-px bg-border" />
               <MenuItem icon={<FileJson size={14} />} label="Workspace (.json)" onClick={() => void doExport('workspace')} />
               <MenuItem icon={<FileCode size={14} />} label="Bifrost config.json" onClick={() => void doExport('config')} />

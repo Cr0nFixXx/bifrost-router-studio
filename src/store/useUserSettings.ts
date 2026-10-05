@@ -30,6 +30,10 @@ interface UserSettingsState {
   visualElements: VisualElement[];
   modelApiUrl: string;
   modelApiKey: string;
+  /** Base URL of a live Bifrost gateway, used by the API mode's direct transport. */
+  bifrostApiUrl: string;
+  /** Push canvas changes to the gateway automatically (debounced). Off by default. */
+  autoSync: boolean;
   visualToolColor: string;
   visualToolSize: number;
   load: () => void;
@@ -39,6 +43,8 @@ interface UserSettingsState {
   updateProject: (id: string, patch: Partial<UserProject>) => void;
   removeProject: (id: string) => void;
   setModelApi: (url: string, key?: string) => void;
+  setBifrostApiUrl: (url: string) => void;
+  setAutoSync: (on: boolean) => void;
   setVisualToolColor: (color: string) => void;
   setVisualToolSize: (size: number) => void;
   addVisualElement: (kind: VisualToolKind, x: number, y: number) => string;
@@ -55,6 +61,8 @@ const defaults = {
   visualElements: [] as VisualElement[],
   modelApiUrl: '/v1/models',
   modelApiKey: '',
+  bifrostApiUrl: 'http://localhost:8080',
+  autoSync: false,
   visualToolColor: '#fbbf24',
   visualToolSize: 12,
 };
@@ -66,6 +74,8 @@ function serialize(s: UserSettingsState) {
     visualElements: s.visualElements,
     modelApiUrl: s.modelApiUrl,
     modelApiKey: s.modelApiKey,
+    bifrostApiUrl: s.bifrostApiUrl,
+    autoSync: s.autoSync,
     visualToolColor: s.visualToolColor,
     visualToolSize: s.visualToolSize,
   };
@@ -103,6 +113,8 @@ export const useUserSettings = create<UserSettingsState>((set, get) => ({
     get().persist();
   },
   setModelApi: (modelApiUrl, modelApiKey = get().modelApiKey) => { set({ modelApiUrl, modelApiKey }); get().persist(); },
+  setBifrostApiUrl: (bifrostApiUrl) => { set({ bifrostApiUrl }); get().persist(); },
+  setAutoSync: (autoSync) => { set({ autoSync }); get().persist(); },
   setVisualToolColor: (visualToolColor) => { set({ visualToolColor }); get().persist(); },
   setVisualToolSize: (visualToolSize) => { set({ visualToolSize: Math.max(1, Math.min(48, visualToolSize)) }); get().persist(); },
   addVisualElement: (kind, x, y) => {

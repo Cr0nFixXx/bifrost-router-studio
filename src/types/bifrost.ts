@@ -52,6 +52,53 @@ export interface RoutingRule {
   updated_at?: string;
 }
 
+/* Bifrost management API (/api/routing/rules) ---------------------------- */
+
+/** Target as the management API speaks it: `key_id` instead of the DB's `api_key`. */
+export interface ApiTarget {
+  provider?: string | null;
+  model?: string | null;
+  key_id?: string | null;
+  weight: number;
+}
+
+/**
+ * Body accepted by POST /api/routing/rules. `scope` is mandatory here and
+ * absent from the update schema — a scope change has to be delete + create.
+ */
+export interface ApiRuleCreate {
+  name: string;
+  cel_expression: string;
+  scope: RuleScope;
+  priority: number;
+  targets: ApiTarget[];
+  scope_id?: string;
+  description?: string;
+  enabled?: boolean;
+  chain_rule?: boolean;
+  fallbacks?: RoutingFallback[];
+  query?: unknown;
+}
+
+/**
+ * Body accepted by PUT /api/routing/rules/{id}. Every field is optional, but
+ * supplying `targets` replaces the whole target list — so callers send the
+ * complete rule, never a delta.
+ */
+export type ApiRuleUpdate = Partial<Omit<ApiRuleCreate, 'scope'>>;
+
+/** Rule as returned by GET /api/routing/rules. Never send this back verbatim. */
+export interface ApiRule extends ApiRuleCreate {
+  id: string;
+  chain_rule?: boolean;
+  /** Streaming cutoff, 1–300000 ms. Not modelled in the canvas. */
+  ttft_timeout_ms?: number | null;
+  /** Raw query-builder JSON from the Bifrost dashboard. */
+  query?: unknown;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ProviderConfig {
   id: string;
   type: string;

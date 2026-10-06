@@ -1,0 +1,71 @@
+{
+  "skill_name": "doc-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Die README sagt, es gibt Telemetrie auf den Targets. Stimmt das noch?",
+      "expected_output": "Verifiziert gegen den Code statt die Datei zu glauben. Findet, dass die Telemetry-UI in v0.2.8 entfernt wurde und src/lib/telemetry.ts keine Importer hat. Berichtet als Befund mit Fundstelle und nennt die Quelle der Wahrheit.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Führt einen grep gegen src/ aus, um die Telemetry-Existenz zu prüfen"
+        },
+        {
+          "text": "Prüft, ob src/lib/telemetry.ts noch Importer hat"
+        },
+        {
+          "text": "Berichtet nicht einfach, was die README sagt, sondern was der Code zeigt"
+        },
+        {
+          "text": "Nennt die Fundstelle (Datei und Zeile)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "CLAUDE.md wird immer länger. Kannst du das aufräumen wie letztes mal?",
+      "expected_output": "Misst zuerst (Zeilenzahl, Abschnittsgrößen), sucht dann nach Dopplungen und falschen Behauptungen, berichtet, und fragt nach Entscheidungen — bevor irgendeine Datei angefasst wird. Höchstens zwei Frage-Runden.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Misst zuerst: Zeilenzahl und Abschnittsgrößen"
+        },
+        {
+          "text": "Sucht nach doppelten Überschriften und doppelten Versionsnummern"
+        },
+        {
+          "text": "Verifiziert Behauptungen gegen den Code, statt sie zu berichten"
+        },
+        {
+          "text": "Legt KEINE Datei an, bevor der Nutzer bestätigt hat"
+        },
+        {
+          "text": "Fragt mit einer empfohlenen Option an erster Stelle"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Prüf ob die Docs noch zum Code passen",
+      "expected_output": "Breiter Audit über die Doku-Files. Deckt mindestens ab: tote Dateien, Testzahlen, Versionskonsistenz zwischen package.json und src/lib/version.ts, und aufgelöste ./DATEI.md-Verweise. Findet mindestens einen echten Befund oder sagt klar, dass die Datenlage zu dünn ist.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Prüft tote Dateien (Dateien ohne Importer)"
+        },
+        {
+          "text": "Prüft, ob die Testzahl in der Doku mit npm test übereinstimmt"
+        },
+        {
+          "text": "Prüft, ob package.json und src/lib/version.ts dieselbe Build-Nummer führen"
+        },
+        {
+          "text": "Prüft alle ./DATEI.md-Verweise auf Auflösbarkeit"
+        },
+        {
+          "text": "Markiert nicht auflösbare Behauptungen als UNBESTÄTIGT statt zu raten"
+        }
+      ]
+    }
+  ]
+}

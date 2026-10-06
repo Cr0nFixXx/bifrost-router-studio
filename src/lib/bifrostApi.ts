@@ -42,15 +42,34 @@ export class BifrostApiError extends Error {
   }
 }
 
-/** Where the token lives. Either the local bridge (which injects it) or direct. */
+/**
+ * Where the token lives. Either the local bridge (which injects it) or direct.
+ */
 export interface ApiTransport {
-  /** Absolute URL for a path below the routing prefix, e.g. `/rules`. */
+  /** Absolute URL for a rules path, already joined with its version prefix. */
   url: (path: string) => string;
   /** Bearer token to attach, or null when a proxy injects it for us. */
   token: string | null;
-  /** Prefixes tried in order until one answers — Bifrost <2.0.0 differs. */
-  prefixes: readonly string[];
+  /**
+   * Version prefixes tried in order until one answers, each with the rules
+   * path that goes with it. Bifrost <2.0.0 serves the same operations at
+   * `/api/governance/routing-rules`, NOT `/api/governance/rules` — the suffix
+   * differs per prefix, so prefix and suffix have to travel together.
+   */
+  prefixes: ReadonlyArray<VersionPrefix>;
 }
+
+export interface VersionPrefix {
+  prefix: string;
+  /** Rules path appended to `prefix`, e.g. `/rules` or `/routing-rules`. */
+  rules: string;
+}
+
+/** Rules paths per Bifrost version. `rules` is appended to `prefix`. */
+const PREFIXES: readonly VersionPrefix[] = [
+  { prefix: '/api/routing', rules: '/rules' },
+  { prefix: '/api/governance', rules: '/routing-rules' },
+];
 
 /** Transport talking straight at Bifrost. Token must be supplied by the caller. */
 export function directTransport(baseUrl: string, token: string | null): ApiTransport {
@@ -58,7 +77,7 @@ export function directTransport(baseUrl: string, token: string | null): ApiTrans
   return {
     url: (path) => `${base}${path}`,
     token,
-    prefixes: ['/api/routing', '/api/governance'],
+    prefixes: PREFIXES,
   };
 }
 
@@ -68,7 +87,7 @@ export function bridgeTransport(bridgeUrl: string): ApiTransport {
   return {
     url: (path) => `${base}/api/bifrost${path}`,
     token: null,
-    prefixes: ['/api/routing', '/api/governance'],
+    prefixes: PREFIXES,
   };
 }
 
@@ -168,17 +187,32 @@ export function apiRuleToRouting(rule: ApiRule): RoutingRule {
 /* -------------------------------- client -------------------------------- */
 
 export class BifrostApi {
-  /** Resolved on first successful call; see `pickPrefix`. */
-  private prefix: string | null = null;
+  /** Version prefix resolved on first successful call; see `request`. */
+  private prefix: VersionPrefix | null = null;
 
   constructor(private readonly transport: ApiTransport) {}
 
+  /**
+   * `path` is the modern rules path (`/rules`, `/rules/{id}`). It is rewritten
+   * per version prefix, because the legacy route uses a different rules
+   * segment (`/routing-rules`). Handing every version the same string is what
+   * made the <2.0.0 fallback request a path that does not exist.
+   */
+  private resolve(candidate: VersionPrefix, path: string): string {
+    if (path === '/rules' || path.startsWith('/rules/')) {
+      return `${candidate.prefix}${candidate.rules}${path.slice('/rules'.length)}`;
+    }
+    return `${candidate.prefix}${path}`;
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const last: BifrostApiError[] = [];
-    for (const prefix of this.prefix ? [this.prefix] : this.transport.prefixes) {
+    const candidates = this.prefix ? [this.prefix] : this.transport.prefixes;
+    for (const candidate of candidates) {
+      const url = this.transport.url(this.resolve(candidate, path));
       let res: Response;
       try {
-        res = await fetch(this.transport.url(`${prefix}${path}`), {
+        res = await fetch(url, {
           method,
           headers: authHeaders(this.transport.token),
           body: body === undefined ? undefined : JSON.stringify(body),
@@ -188,20 +222,20 @@ export class BifrostApi {
         // cannot help, so surface it immediately.
         throw new BifrostApiError((err as Error).message || 'Bifrost ist nicht erreichbar', 0);
       }
-      // A 404 on a bare list means the whole prefix is missing (wrong fork);
-      // on an item path it means the rule is gone. Only the former is worth
-      // retrying against the other prefix.
+      // A 404 on the bare list means the whole version prefix is missing (wrong
+      // fork); on an item path it means the rule is gone. Only the former is
+      // worth retrying against the other prefix.
       if (res.status === 404 && path === '/rules' && !this.prefix) {
         last.push(await readError(res));
         continue;
       }
       if (!res.ok) throw await readError(res);
-      this.prefix = prefix;
+      this.prefix = candidate;
       if (res.status === 204) return undefined as T;
       return (await res.json()) as T;
     }
     throw new BifrostApiError(
-      `Bifrost antwortet auf keiner der bekannten API-Pfade (${this.transport.prefixes.join(', ')}). Ist die Instanz mindestens 2.0.0?`,
+      `Bifrost antwortet auf keiner der bekannten API-Pfade (${candidates.map((c) => c.prefix + c.rules).join(', ')}). Ist die Instanz mindestens 2.0.0?`,
       last[0]?.status ?? 404,
     );
   }
@@ -225,9 +259,19 @@ export class BifrostApi {
     await this.request<void>('DELETE', `/rules/${encodeURIComponent(id)}`);
   }
 
-  /** Version string of the gateway, e.g. `v2.3.1`. Used for the API-fork check. */
+  /**
+   * Version string of the gateway, e.g. `v2.3.1`.
+   *
+   * `/api/version` sits outside the version-prefix scheme and outside the
+   * bridge's rules whitelist, so it is addressed directly rather than through
+   * `request()`. Unused by app code today; kept for diagnostics.
+   */
   async version(): Promise<string> {
-    const data = await this.request<{ version?: string }>('GET', '/version');
+    const res = await fetch(this.transport.url('/api/version'), {
+      headers: authHeaders(this.transport.token),
+    });
+    if (!res.ok) throw await readError(res);
+    const data = (await res.json()) as { version?: string };
     return data.version ?? '';
   }
 }

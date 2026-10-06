@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.9 — Build 26100507
+## 0.2.9 — Build 26100604
 
 - Added an **API mode**: the Connect screen now offers either the SQLite file (unchanged, still the
   default) or a live Bifrost gateway via its management API (`/api/routing/rules`).
@@ -25,6 +25,16 @@
   failed connect explains itself.
 - A direct browser transport remains available as a fallback; its token is session-only and is
   never persisted.
+- **Fixed: the Bifrost <2.0.0 fallback built a path that does not exist.** The client asked
+  `/api/governance/rules`; the real legacy route is `/api/governance/routing-rules`. Prefixes now
+  carry their own rules suffix. Every test passed while this was broken, because a mock that
+  answers 404 to the collection accepts a wrong path just as happily.
+- **Fixed: `version()` was unreachable** through both transports — it went through the rules
+  whitelist, which does not cover `/api/version`.
+- Added a `gateway-smoke` skill: 20 checks against a mock gateway plus the local bridge, covering
+  the API constraints that neither `tsc` nor Vitest can see.
+- Added `doc-set`, `doc-audit` and `release-bump` skills, and split the documentation into
+  ARCHITECTURE / TESTING / MILESTONES alongside the existing files.
 - TopBar hides Save / Diff / SQL Browser and the SQLite export in API mode, where there is no file
   to write.
 

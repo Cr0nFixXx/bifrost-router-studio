@@ -1,0 +1,59 @@
+{
+  "skill_name": "gateway-smoke",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Läuft der Sync zum Gateway noch? Ich hab an der Bridge was gebaut",
+      "expected_output": "Führt scripts/smoke.mjs aus und berichtet das Ergebnis. Erkennt den Bridge-Whitelist-Check, der nach einer Bridge-Änderung besonders relevant ist. Kein eigenes Mock bauen.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Führt node .claude/skills/gateway-smoke/scripts/smoke.mjs aus"
+        },
+        {
+          "text": "Baut kein eigenes Mock-Gateway von Hand"
+        },
+        {
+          "text": "Berichtet die Check-Anzahl (19/19) und benennt etwaige Fehlschläge"
+        },
+        {
+          "text": "Erklärt den Bridge-Whitelist-Check als besonders relevant nach einer Bridge-Änderung"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Mach mal den API-Test gegen die lokale Instanz",
+      "expected_output": "Führt den Smoke-Test aus. Falls eine echte Instanz konfiguriert ist, prüft er zusätzlich die Bridge-Health und weist darauf hin, dass der Mock die Standardroute ist.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Führt das Smoke-Script aus statt einen ad-hoc-Test zu bauen"
+        },
+        {
+          "text": "Nennt die Abhängigkeit von freien Ports 8080 und 8787"
+        },
+        {
+          "text": "Räumt gestartete Prozesse auf / beendet sie sauber"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Verifizier die sechs API-Constraints",
+      "expected_output": "Verweist auf die sechs Constraints und führt den Smoke-Test aus, weil genau sie dort verifiziert werden. Nennt die Constraints aus CLAUDE.md, statt sie aus dem Gedächtnis neu zu formulieren.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Führt den Smoke-Test aus, der die Constraints tatsächlich prüft"
+        },
+        {
+          "text": "Nennt die sechs Constraints mit Verweis auf CLAUDE.md statt sie frei zu erfinden"
+        },
+        {
+          "text": "Nennt die Einschränkung, dass diese Constraints nicht von npm test abgedeckt sind"
+        }
+      ]
+    }
+  ]
+}

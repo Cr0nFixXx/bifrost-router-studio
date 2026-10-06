@@ -1,0 +1,68 @@
+{
+  "skill_name": "release-bump",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Neue Version bauen",
+      "expected_output": "Liest den Versionsvertrag aus CLAUDE.md, führt bump.mjs aus (nur Build, keine App-Version), prüft dass beide Stellen übereinstimmen, und lässt die App-Version unverändert.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Liest den Versionsvertrag aus CLAUDE.md, bevor er etwas ändert"
+        },
+        {
+          "text": "Setzt die Build-Nummer in src/lib/version.ts UND package.json"
+        },
+        {
+          "text": "Ändert die App-Version NICHT, weil nicht ausdrücklich darum gebeten wurde"
+        },
+        {
+          "text": "Verifiziert nach dem Schreiben, dass beide Stellen denselben Wert führen"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "bump auf 0.3.0 und dokumentier das",
+      "expected_output": "Hier IST eine ausdrückliche Anweisung für die App-Version. Führt bump.mjs --version 0.3.0 aus, zieht CHANGELOG.md (Features/Bugfixes) und PROGRESS.md (Begründung/Validierung) nach, und lässt TODO.md unangetastet, wenn nichts erledigt wurde.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Hebt die App-Version auf 0.3.0 an (ausdrückliche Anweisung liegt vor)"
+        },
+        {
+          "text": "Setzt die Build-Nummer ebenfalls neu"
+        },
+        {
+          "text": "Legt einen CHANGELOG-Eintrag für 0.3.0 an"
+        },
+        {
+          "text": "Legt einen ausführlicheren PROGRESS-Eintrag an, der Begründung und Validierung nennt"
+        },
+        {
+          "text": "Trägt die konkrete Build-Nummer NICHT in CLAUDE.md ein"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Der Build hängt noch auf der alten Nummer, mach das mal aktuell",
+      "expected_output": "Nur die Build-Nummer. Kein CHANGELOG-Eintrag, weil kein Release stattfindet. Prüft danach, dass package.json und src/lib/version.ts übereinstimmen — genau das war früher der Fehler.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Ändert NUR die Build-Nummer, nicht die App-Version"
+        },
+        {
+          "text": "Legt KEINEN CHANGELOG-Eintrag an, weil kein Release stattfindet"
+        },
+        {
+          "text": "Prüft nach dem Schreiben, dass beide Stellen denselben Wert führen"
+        },
+        {
+          "text": "Läuft npm test und npm run build zum Abschluss"
+        }
+      ]
+    }
+  ]
+}

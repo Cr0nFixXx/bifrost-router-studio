@@ -14,6 +14,7 @@ of the project and does not describe what the app does for users.
 | What shipped in which release | [`CHANGELOG.md`](./CHANGELOG.md) |
 | Open work, known limitations | [`TODO.md`](./TODO.md) |
 | Big ideas worth a route | [`MILESTONES.md`](./MILESTONES.md) |
+| Ongoing state, gotchas, do-not-forget | [`HANDOFF.md`](./HANDOFF.md) |
 | Bifrost's own semantics | [routing-rules docs](https://docs.getbifrost.ai/providers/routing-rules) |
 
 ## What this project is
@@ -99,6 +100,13 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
 - `targets` in a PUT replaces the entire list. A partial `targets` array silently drops routes.
 - Generate `query` from CEL on every push, or Bifrost's rule builder drifts from the canvas.
 - Never let a server-only field (`ttft_timeout_ms`) enter the diff, or every sync writes.
+- The version prefix and the rules suffix travel **together**: `/api/routing` + `/rules` =
+  `/api/routing/rules`, but `/api/governance` + `/rules` is a path that does not exist — the legacy
+  suffix is `/routing-rules`. Getting this wrong kills the <2.0.0 fallback while every test still
+  passes, because a mock that 404s the collection happily accepts a wrong path too.
+  `gateway-smoke` covers it by *writing* through the legacy prefix.
+- `/api/version` sits outside the version-prefix scheme and outside the bridge's rules whitelist.
+  Address it directly; do not route it through `request()`.
 
 **Bridge (`scripts/local-bridge.mjs`)**
 - The whitelist matches the path **including** `/api`. The client sends `/api/bifrost` + `/api/routing`

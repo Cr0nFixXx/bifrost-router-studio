@@ -9,3 +9,4 @@ dist-ssr
 *.sqlite
 *.sqlite-journal
 data/*.sqlite
+*-workspace/

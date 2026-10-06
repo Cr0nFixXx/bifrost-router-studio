@@ -1,0 +1,59 @@
+{
+  "skill_name": "doc-set",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Ich will eine neue Option einbauen, mit der man die Auto-Sync-Distanz einstellen kann (nach wie vielen Sekunden ein Sync feuert). Was muss ich wo dokumentieren?",
+      "expected_output": "Erkennt die neue Option als Konfiguration und benennt die Zieldateien aus der Rollenmatrix. Nennt CLAUDE.md für die Regel (Vertrag, keine Zahl) und weist darauf hin, dass die konkrete Zahl nicht in die Doku gehört, weil sie im Code steht. Kein Kopieren von Zahlen.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Benennt CLAUDE.md als Ziel für die Regel"
+        },
+        {
+          "text": "Legt fest, dass eine konkrete Zahl (z.B. 800ms oder Sekunden-Wert) NICHT in die Doku gehört, weil der Code sie schon führt"
+        },
+        {
+          "text": "Erfindet keine neue Doku-Datei, obwohl eine Option dazukommt"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Leg mal ne Datei an die beschreibt wie die API-Schicht funktioniert. Also wie der Studio mit nem Bifrost-Gateway redet, welche Module das machen, wie die Bridge dazwischenhängt.",
+      "expected_output": "Legt ARCHITECTURE.md an, weil genau dafür die Rolle definiert ist. Nutzt die Struktur aus references/file-roles.md, verlinkt in die bestehenden Doku-Files, und legt die Datei nicht als Kopie von CLAUDE.md an.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Legt die Datei als ARCHITECTURE.md an"
+        },
+        {
+          "text": "Legt sie NICHT als zusätzliche Kopie der CLAUDE.md an"
+        },
+        {
+          "text": "Verlinkt die neue Datei von mindestens einer bestehenden Doku-Datei aus"
+        },
+        {
+          "text": "Prüft nach dem Anlegen, dass alle ./DATEI.md-Verweise auflösbar sind"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Wo schreib ich hin dass der Sync zum Gateway keine Konflikterkennung hat? Also dass wenn jemand parallel im Bifrost-Dashboard Regeln ändert, der letzte Push gewinnt.",
+      "expected_output": "Erkennt das als bekannte Grenze und verweist auf TODO.md (Known limitations) — nicht auf CLAUDE.md, weil es kein Gotcha mit einer konkreten Fehlerursache ist, sondern eine Einschränkung des aktuellen Zuschnitts.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Verweist auf TODO.md als Ort für bekannte Grenzen"
+        },
+        {
+          "text": "Legt das nicht als Fallstrick in CLAUDE.md ab"
+        },
+        {
+          "text": "Legt keine neue Doku-Datei für eine einzelne Grenze an"
+        }
+      ]
+    }
+  ]
+}

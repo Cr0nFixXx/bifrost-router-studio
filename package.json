@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.2.9",
   "type": "module",
-  "description": "Client-side SQLite editor & visual planner for Bifrost AI Gateway routing rules. No backend — uses sql.js (WASM SQLite) to read/write the Bifrost DB file directly in the browser.",
+  "description": "Client-side SQLite editor & visual planner for Bifrost AI Gateway routing rules. Browser-first — uses sql.js (WASM SQLite) to read/write the Bifrost DB file directly; an optional local bridge and an API mode add server-side file paths and live gateway sync.",
   "scripts": {
     "dev": "npm run copy-wasm && vite",
     "build": "npm run copy-wasm && tsc --noEmit && vite build",
@@ -39,6 +39,6 @@
     "vite": "^8.1.3",
     "vitest": "^4.1.9"
   },
-  "build": "26100506",
+  "build": "26100507",
   "license": "AGPL-3.0-only"
 }

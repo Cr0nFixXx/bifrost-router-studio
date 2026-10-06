@@ -2,7 +2,7 @@
 
 A sophisticated, dark, "cyber-frosted" aesthetic — premium SaaS, zero visual overload.
 
-## Color palette (strict — no light mode)
+## Color palette (strict — dark is the primary target, light is supported)
 
 | Token | Hex | Usage |
 | --- | --- | --- |

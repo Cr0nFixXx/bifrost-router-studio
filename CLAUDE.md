@@ -1,53 +1,43 @@
 # CLAUDE.md — Agent / Contributor Guide
 
-Context file for AI agents and developers working in this repository. It explains the
-architecture, the Bifrost schema mapping, and the conventions to follow when extending the code.
+**This file is the source of truth for conventions, architecture and gotchas.** It is not a history
+of the project and does not describe what the app does for users.
+
+| Need | Go to |
+| --- | --- |
+| Conventions, gotchas | **this file** |
+| Data & transport layers, module map | [`ARCHITECTURE.md`](./ARCHITECTURE.md) |
+| Tests, acceptance criteria | [`TESTING.md`](./TESTING.md) |
+| Visual design, palette, UX rules | [`DESIGN.md`](./DESIGN.md) |
+| What the app does, how to run it | [`README.md`](./README.md) |
+| Why a change was made, when, validated how | [`PROGRESS.md`](./PROGRESS.md) |
+| What shipped in which release | [`CHANGELOG.md`](./CHANGELOG.md) |
+| Open work, known limitations | [`TODO.md`](./TODO.md) |
+| Big ideas worth a route | [`MILESTONES.md`](./MILESTONES.md) |
+| Bifrost's own semantics | [routing-rules docs](https://docs.getbifrost.ai/providers/routing-rules) |
 
 ## What this project is
 
-A **client-side SQLite editor & visual planner** for Bifrost AI Gateway routing rules. There is
-**no backend and no server**. SQLite runs in the browser via **`sql.js` (WASM)**, so the user
-opens their Bifrost DB file, edits it in-memory, and downloads the modified file. No request
-traffic is ever proxied and no data leaves the browser.
+A **visual planner and editor for Bifrost AI Gateway routing rules**, browser-first. Mental model:
+**canvas graph ⇄ Bifrost `governance.routing_rules[]`** — the canvas edits whichever source the user
+picked: a SQLite file (default) or a live gateway. Details in
+[`ARCHITECTURE.md`](./ARCHITECTURE.md), user-facing description in [`README.md`](./README.md).
 
-Mental model: **canvas graph ⇄ Bifrost `governance.routing_rules[]`**, backed by a SQLite file the
-user supplies. The DB is the source of truth; the canvas is an editor on top of it.
+No request traffic is ever proxied, in either mode.
 
-## Bifrost schema mapping (the contract)
+## Conventions
 
-| Canvas element | Bifrost field | Notes |
-| --- | --- | --- |
-| `trigger` node | one `routing_rule` | `cel_expression`, `scope`, `scope_id`, `priority`, `chain_rule`, `enabled` |
-| `target` node | `rule.targets[]` | `{ provider?, model?, weight }`; weights should sum to `1` |
-| `fallback` node | `rule.fallbacks[]` | `"provider/model"` string, or `{ provider, model?, key_id? }` object for key pinning (Bifrost ≥ 2.2.3); helpers `fallbackToParts`/`fallbackToRef`/`fallbackFromParts` in `src/lib/modelRefs.ts` |
-| `complexity` node | visual helper | the trigger's CEL encodes `complexity_tier == "…"` |
-| `provider` node | `config.providers{}` | metadata only |
-
-Mapper lives in `src/lib/bifrostMapper.ts`:
-- `workflowToRules(nodes, edges)` — graph → rules. Uses BFS (`collectReachable`) so chains with
-  intermediate complexity nodes still resolve correctly.
-- `rulesToWorkflow(rules)` — rules → graph (used on DB load).
-- `rulesToConfig` — emits the `{ providers, governance: { routing_rules } }` shape.
-
-**Keep all graph↔schema translation in `bifrostMapper.ts`.** Do not inline mapping in components.
-
-## State management
-
-`src/store/useStore.ts` is the single source of truth (Zustand). It owns:
-- the React Flow `nodes`/`edges` and `onNodesChange/onEdgesChange/onConnect`
-- connection state (`connection`, `dbFileName`, `dbKind`, `busy`, `dirty`) and the live DB handle
-  (`getDb()`, a module variable)
-- `direction` (LR/TB), `expertMode`, sidebar collapse flags, `wizardOpen`, `activeRightTab`
-- DB mirrors: `rules`, `providers`, `modelCatalog`
-- `diagnostics` (recomputed via `recompute()` after any graph mutation)
-- undo/redo history (`past`/`future` + `commit(tag?)` with text-edit coalescing)
-- `sim`/`simRunning` (simulation result)
-
-Key actions: `connectFromFile/connectSample/createNew/reconnectCached/disconnect`,
-`refreshFromDb`, `saveToDb` (mirror canvas → `routing_rules` + providers, then cache), `downloadDb`,
-`importConfig`. Node mutations go through `updateNodeData(id, patch)` and `addNode/deleteNode`.
-After **any** mutation that changes topology or node data, `recompute()` refreshes diagnostics and
-`markDirty()` flips the dirty flag + caches the DB to IndexedDB.
+- **Strict TypeScript** everywhere; no `any` in shared types (`src/types/*`).
+- Path alias `@/` → `src/`. Use it for all imports.
+- Tailwind only for styling; keep the exact palette from `DESIGN.md`. Dark is the default and the
+  primary design target; light mode exists via CSS variables for bright environments and exports.
+- New UI primitives go in `components/ui/primitives.tsx`.
+- Prefer small, focused files; colocate node bodies with `BaseNode`.
+- **Serialization boundaries** — `annotation` nodes and the visual elements in `useUserSettings` are
+  canvas overlays. They must never reach the Bifrost routing tables, in either mode.
+  `useUserSettings` holds no gateway token; that lives in the bridge environment.
+- **UI placement** — Dashboard and Settings are top-level modals from the TopBar, not right-panel
+  tabs. RightPanel is reserved for Inspector, Rules, History, Providers and Simulation.
 
 ## CEL handling
 
@@ -57,6 +47,7 @@ After **any** mutation that changes topology or node data, `recompute()` refresh
   condition tree. Guarantees visual↔CEL round-trips for the supported subset.
 - `validateCEL(str)` — lightweight linter (parens, quotes, `=`, dangling operators, parser warnings).
 - `evalCEL(str, ctx)` (in the store) — **mock-only** evaluator for the simulation; never a security boundary.
+- `src/lib/bifrostQuery.ts` — CEL → Bifrost's react-querybuilder JSON (`celToBifrostQuery`).
 
 Supported variables match Bifrost: `model`, `provider`, `request_type`, `headers[...]`, `params[...]`,
 `team_name`, `customer_id`, `virtual_key_name`, `budget_used`, `tokens_used`, `request`, `complexity_tier`.
@@ -69,102 +60,68 @@ Operators: `== != > < >= <= in startsWith endsWith contains matches`, combined w
 - Register new node types in **two** places: `FlowCanvas.tsx` (`nodeTypes`) and the drag palette
   in `Sidebar.tsx` (`PALETTE`). Node `type` string must equal the key used in `nodeTypes`.
 - Edges use `edges/FlowEdge.tsx` (`type: 'flow'`), which animates a traveling pulse when `data.active` is set.
-
-## Port rules
-
-`src/types/workflow.ts` declares `PORT_RULES` (e.g. `trigger.out → target.in | complexity.in`).
-The store's `onConnect` enforces these via `isValidConnection(connection)` (strict) — invalid
-connections are rejected before they are added. Self-loops are also blocked.
-
-## Database (client-side, sql.js / WASM)
-
-- `src/lib/sqljs/loader.ts`: singleton `initSqlJs({ locateFile })` pointed at `/sql-wasm.wasm`
-  (copied into `public/` by `scripts/copy-wasm.mjs`). Exposes `openDatabase(buffer?)`.
-- `src/lib/db/bifrostDb.ts`: **the only module that touches the DB**. Wraps a `sql.js.Database`
-  and exposes typed CRUD for `routing_rules` / `providers` / `models`, plus
-  `exportConfig()`/`importConfig()` (Bifrost `config.json` projection) and `exportBytes()`
-  (serialize the whole DB for download / IndexedDB caching).
-- `src/lib/db/sample.ts`: demo dataset used for *Open sample database*.
-- `src/lib/db/persistence.ts`: IndexedDB cache of the last DB bytes so a reload can "resume".
-- The live DB handle is kept in a **module variable** in `store/useStore.ts` (`getDb()`), NOT in
-  reactive state (it wraps a WASM handle).
-- Keep ALL SQLite access in `bifrostDb.ts`. Components/stores call its methods — never raw SQL.
-
-> Migration note: this replaced the old Express + `better-sqlite3` backend. If you need a Node
-> service later, re-add one, but the canonical architecture here is **browser-only**.
-
-## Conventions
-
-- **Strict TypeScript** everywhere; no `any` in shared types (`src/types/*`).
-- Path alias `@/` → `src/`. Use it for all imports.
-- Tailwind only for styling; keep the exact palette from `DESIGN.md` (no light mode).
-- New UI primitives go in `components/ui/primitives.tsx`.
-- Prefer small, focused files; colocate node bodies with `BaseNode`.
-
-## Extending the codebase (checklist)
-
-1. Add type(s) to `src/types/*`.
-2. If it touches Bifrost: implement mapping in `bifrostMapper.ts` + tests mentally against the
-   [routing-rules docs](https://docs.getbifrost.ai/providers/routing-rules).
-3. Add store actions → call `recompute()` where topology/validation is affected.
-4. Add/adjust `validation.ts` diagnostics.
-5. Wire UI, register node types + palette, update docs.
-
-## Current graph model
-
-Rule/Trigger nodes are metadata anchors only. Conditions are represented as dedicated Condition nodes and nested AND/OR Logic nodes. The mapper compiles the connected condition graph into `routing_rules.cel_expression`. Target nodes contain provider/model/key/weight directly; Model nodes are deprecated/hidden and should not be used for new workspaces. Fallback nodes are visually connected from targets but serialize as rule-level `routing_rules.fallbacks`.
+- `src/types/workflow.ts` declares `PORT_RULES`. The store's `onConnect` enforces them via
+  `isValidConnection(connection)` (strict) — invalid connections are rejected before they are
+  added, and self-loops are blocked.
 
 ## Versioning contract
 
-Current app version is `0.2.9`; do not change this version unless explicitly requested by the user. The build number must be updated for every code change using `YYMMDDHH` in Europe/Berlin time. Current build: `26100507`.
+Version `0.2.9`, build `26100507`. **Do not change the app version unless the user explicitly asks.**
+The build number must be bumped on **every** code change, using `YYMMDDHH` in Europe/Berlin time,
+in **both** `src/lib/version.ts` and the top-level `"build"` field in `package.json`.
+Release history: [`CHANGELOG.md`](./CHANGELOG.md).
 
-## Dashboard/settings placement
+## Extending the codebase
 
-Dashboard and Settings are top-level modal pages opened from the TopBar. They are not right-panel tabs. RightPanel is reserved for Inspector, Rules, History, Providers and Simulation.
+1. Add type(s) to `src/types/*`.
+2. If it touches Bifrost: implement mapping in `bifrostMapper.ts` (file mode) or `sync.ts` /
+   `bifrostApi.ts` (API mode), and test mentally against the
+   [routing-rules docs](https://docs.getbifrost.ai/providers/routing-rules).
+3. Add store actions → call `recompute()` where topology/validation is affected.
+4. Add/adjust `validation.ts` diagnostics.
+5. Wire UI, register node types + palette, then update docs: `PROGRESS.md` for what changed and how
+   it was validated, `CHANGELOG.md` if it is a feature or bug fix, `TODO.md` if it closes or opens
+   an item, this file if it changes a convention or a gotcha.
 
-## Visual-only canvas nodes
+When is a change *done* — acceptance criteria, test coverage, manual API-mode checks — see
+[`TESTING.md`](./TESTING.md).
 
-`annotation` nodes are visual-only. They must be ignored by DB/routing-rule serialization and should never write into Bifrost SQLite routing tables.
+## Fallstricke (gotchas)
 
-## Build/version update
+Each of these was hit for real; several cost silent data loss or a silent 403. Full history in
+[`PROGRESS.md`](./PROGRESS.md).
 
-Current version: `0.2.9`. Current build: `26100507`. Do not change version unless explicitly requested. Update build on every code change using Europe/Berlin `YYMMDDHH`.
+**Writing to the gateway**
+- Never round-trip a GET response into POST/PUT. `id`, `created_at`, `updated_at` and `scope` are in
+  the read shape but not in any write schema. Go through `toWriteShape` / `toUpdateShape`.
+- `scope`/`scope_id` are absent from the update schema. Moving a rule between scopes is delete +
+  create — it changes the rule's id. A "field diff" that treats scope as updatable is wrong.
+- `targets` in a PUT replaces the entire list. A partial `targets` array silently drops routes.
+- Generate `query` from CEL on every push, or Bifrost's rule builder drifts from the canvas.
+- Never let a server-only field (`ttft_timeout_ms`) enter the diff, or every sync writes.
 
-## User settings store
+**Bridge (`scripts/local-bridge.mjs`)**
+- The whitelist matches the path **including** `/api`. The client sends `/api/bifrost` + `/api/routing`
+  + `/rules`; matching `/routing/rules` alone rejects everything with a 403 that looks like a routing
+  problem.
+- Forward the request body **verbatim**. It is already text; `JSON.stringify`-ing it again delivers a
+  string to the gateway instead of a rule object.
+- The bridge is a whitelist proxy by design. Do not "just forward `/api/*`" — that would put the
+  management token in reach of `/api/config` and `/api/api-keys`.
+- No token configured is **not** a fallback to unauthenticated: answer 503 with a readable reason.
 
-`src/store/useUserSettings.ts` persists user projects/workspaces, external model API settings and visual background elements in localStorage. Visual elements are canvas overlays and must not be serialized to Bifrost routing tables.
+**Versioning**
+- Two places carry the build number: `src/lib/version.ts` and the top-level `"build"` in
+  `package.json`. Bumping one and not the other is easy to miss.
+- `v1.x` in the logs is the pre-alpha line, `v0.x` the current one. They are not comparable; do not
+  read a `v1.4.x` heading as newer than a `v0.2.x` one.
 
-## Optional local bridge
+**Node model**
+- `complexity` and `model` node kinds are legacy. They exist for workspace migration and are not in
+  the palette — adding them back silently resurrects deprecated UI.
+- New node types must be registered in **both** `FlowCanvas.tsx` (`nodeTypes`) and `Sidebar.tsx`
+  (`PALETTE`) with the same `type` string.
 
-The app remains browser-only by default. For user-requested server-side filepath support, an optional Node local bridge exists at `scripts/local-bridge.mjs` and can be started with `npm run bridge`. It exposes `/api/open?path=...` and `/api/list?path=...` under `BFRS_LOCAL_ROOT` by default. Absolute paths outside root require `BFRS_ALLOW_ABSOLUTE=1`.
-
-## API mode (live gateway sync)
-
-The ConnectScreen has **two exclusive modes**: SQLite file (default, unchanged) and a live Bifrost
-gateway via its management API. `connectionSource: 'file' | 'api'` in `useStore` decides which.
-
-- `src/lib/bifrostApi.ts` — the only module that talks to a gateway. `ApiRule` (GET) and
-  `ApiRuleCreate`/`ApiRuleUpdate` (POST/PUT) are deliberately separate types.
-- `src/lib/sync.ts` — pure diff/apply logic: `diffRules(local, remote)` → create/update/delete.
-  `toUpdateShape` strips `scope`/`scope_id`; `rejectionReason` refuses bad weights before pushing.
-- Transport is `bridgeTransport` (default; the bridge holds the token) or `directTransport`
-  (token from a session-only component field, never persisted).
-- Auto-sync is a debounced (800 ms) toggle in `useUserSettings.autoSync`, **off by default**.
-  `syncNow()` is always available from the TopBar.
-
-**API constraints that must not be broken** (verified against Bifrost docs 2026-10):
-- `PUT /api/routing/rules/{id}` is partial (no required fields) but supplying `targets`
-  **replaces the entire target list** → always send a full rule body, never a field delta.
-- The update schema has **no `scope`/`scope_id`** → a scope change is delete + create with a new id.
-- The GET shape carries `id`/`created_at`/`updated_at`, none of which the write schemas accept.
-  Never round-trip a GET response into a write; go through `toWriteShape`.
-- `query` is regenerated from CEL on every push so Bifrost's dashboard rule builder matches the canvas.
-- Fields the canvas does not model (`ttft_timeout_ms`, raw `query`) are ignored by the diff — a
-  server-only field must never trigger a push.
-- Bifrost <2.0.0 serves the same routes at `/api/governance/routing-rules`; the client falls back.
-
-The bridge is a **whitelist proxy**, not a generic `/api/*` forwarder: only `/api/version`,
-`/api/health`, `/api/routing/rules[/{id}]` and `/api/governance/routing-rules[/{id}]` pass through.
-Config comes from `BFRS_BIFROST_URL` + `BFRS_BIFROST_TOKEN` (or `BFRS_BIFROST_USER`/`_PASSWORD`).
-
-Current version: `0.2.9`. Current build: `26100507`.
+**Serialization**
+- `annotation` nodes and `useUserSettings` visual elements are overlays. They must never reach the
+  Bifrost routing tables, in either mode.

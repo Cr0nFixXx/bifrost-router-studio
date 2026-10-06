@@ -2,11 +2,29 @@
 
 Status tracking for the project.
 
+> This is the **detailed engineering log**: every code change, with reasoning and the validation run
+> at the time. [`CHANGELOG.md`](./CHANGELOG.md) is the simplified, feature- and bug-fix-oriented view
+> of the same history. [`TODO.md`](./TODO.md) holds what is still open.
+>
+> **Versioning note:** the first entries are marked `v1.x` — that is the **pre-alpha line**, kept here
+> for history. Versioning was restarted at `v0.2.x` when the app became a public, released tool, and
+> build numbers (`YYMMDDHH`, Europe/Berlin) were added then. `v1.x` and `v0.x` are therefore two
+> separate lines, not a single sequence, and their numbers are not comparable. Current: **0.2.9**.
+
+## v1.0.0 — Initial build ✅
+
+(See prior changelog.) Delivered: Vite+React+TS app, React Flow canvas with custom nodes/edges,
+Bifrost schema mapping, visual + manual CEL, Rule-Chain Wizard, simulation playground, live
+validation, provider/model manager, templates, import/export, mock auth + dashboard.
+
 ## v1.1.0 — Client-side SQLite (sql.js) refactor ✅
 
-**Headline change:** removed the Express + `better-sqlite3` backend. The app is now a **pure
+**Headline change:** removed the Express + `better-sqlite3` backend. The app became a **pure
 browser tool** — it opens, edits and exports the Bifrost SQLite file in-memory via
-[sql.js](https://github.com/sql-js/sql.js) (SQLite compiled to WASM). No server, no native build.
+[sql.js](https://github.com/sql-js/sql.js) (SQLite compiled to WASM). No native build.
+
+> Superseded twice since: the optional local bridge re-introduced a Node process for file paths,
+> and v0.2.9 added an API mode that talks to a live gateway. See those entries below.
 
 ### What changed
 - [x] Replaced `better-sqlite3`/Express with **`sql.js` (WASM)**. Added `scripts/copy-wasm.mjs`
@@ -33,13 +51,8 @@ browser tool** — it opens, edits and exports the Bifrost SQLite file in-memory
 ### Known limitations
 - Browsers can't write back to an arbitrary path, so **Save** = in-memory + IndexedDB cache,
   and **Download** = the modified `.sqlite` file. (This is a browser constraint, not a bug.)
-- XML import not implemented (workspace/config `.json` import is).
-
-## v1.0.0 — Initial build ✅
-
-(See prior changelog.) Delivered: Vite+React+TS app, React Flow canvas with custom nodes/edges,
-Bifrost schema mapping, visual + manual CEL, Rule-Chain Wizard, simulation playground, live
-validation, provider/model manager, templates, import/export, mock auth + dashboard.
+- ~~XML import not implemented (workspace/config `.json` import is).~~ **Corrected in v1.2.0:**
+  XML import was already present and only mislabeled as a TODO.
 
 ## v1.2.0 — Diff viewer, rule versioning & drag-to-reorder ✅
 
@@ -68,13 +81,18 @@ diffed and rolled back — entirely client-side.
 
 ### Notes / deferred
 - **XML import** was already implemented (was mislabeled TODO) — documented as done.
-- Multi-user collaboration, telemetry overlay, theming tokens and the gateway-export adapters
-  remain open (see TODO.md); multi-user needs a sync server outside the browser-only design.
+- Multi-user collaboration remains open (see TODO.md); it needs a sync server, which the browser-first
+  architecture deliberately does not ship. Telemetry, theming tokens and the gateway-export adapters
+  listed here as open were all delivered in the entries that follow.
 
 ## v1.3.0 — Gateway export, telemetry overlay & accessibility pass ✅
 
 **Headline change:** rules can now leave the building. Added best-effort exporters to other LLM
 gateways, a synthetic capacity-telemetry overlay on the canvas, and an accessibility pass.
+
+> The telemetry overlay was **removed** in v0.2.8 as unused, together with its settings control.
+> The synthetic-metrics idea was judged to mislead in a browser-only tool with no live data.
+> The gateway exporters remain.
 
 ### What changed
 - [x] Gateway export adapters `src/lib/gatewayExport.ts`: `toLiteLLM()` (LiteLLM `config.yaml` with
@@ -84,6 +102,7 @@ gateways, a synthetic capacity-telemetry overlay on the canvas, and an accessibi
 - [x] Telemetry overlay: `lib/telemetry.ts` (`nodeMetrics` — deterministic per-node synthetic
       readings + `STATUS_COLOR`); store flag `telemetryOn` + `toggleTelemetry`; `TelemetryBadge` on
       target/fallback/provider nodes; `TopBar → Telemetry` toggle; canvas legend.
+      **Removed in v0.2.8** as unused, and `lib/telemetry.ts` deleted.
 - [x] Accessibility pass: `Modal` gains `role="dialog"`, `aria-modal="true"`, `aria-label` and
       initial focus (`tabIndex=-1` + `panelRef`); `aria-live="polite"` / `role="status"` on the
       validation banner, diff summary and dirty indicator.
@@ -272,6 +291,9 @@ and there's a real template gallery (built-in + user packs).
 
 ## Security maintenance — npm audit clean ✅
 
+> Unversioned here because it changed dependencies rather than app behaviour. Filed under `0.2.1`
+> in the CHANGELOG.
+
 ### What changed
 - [x] Upgraded `vite` from v5 to `^8.1.3` to remove vulnerable `esbuild`/Vite dev-server advisory chain.
 - [x] Upgraded `vitest` to `^4.1.9`, removing the vulnerable Vitest/Vite/Vite-node/@vitest/mocker chain.
@@ -303,6 +325,9 @@ and there's a real template gallery (built-in + user packs).
 - [x] `tsc --noEmit` clean; `vitest run` → 51/51 passing; `vite build` clean.
 
 ## v0.2.1 Build 26070603 — Aggregated Target/Fallback nodes + full-rule simulation ✅
+
+> Continuation of the same build stamp as the "Workspace shell and visual tools" entry above — the
+> build number was not bumped between the two, so the headings would otherwise be indistinguishable.
 
 ### What changed
 - [x] Started the target/fallback aggregation refactor: imported/saved rules now use one Target node per rule with multiple weighted provider/model routes (`routes[]`).
@@ -803,3 +828,74 @@ and there's a real template gallery (built-in + user packs).
 
 ### Validation
 - [x] `tsc --noEmit` clean; tests/build/audit run after implementation.
+
+## v0.2.8 Build 26100506 — Bifrost 2.2.3 fallback key pinning ✅
+
+> Backfilled after the fact. These three commits shipped between the modal-overlay work and v0.2.9
+> but had no entry here.
+
+### What changed
+- [x] Fallbacks accept the Bifrost ≥ 2.2.3 object form `{ provider, model, key_id }` in addition to
+      the legacy `"provider/model"` string, so a fallback can pin a specific provider key.
+- [x] `config.json` export resolves a pinned `key_id` to its `config_keys.name` and emits
+      `provider_key_name`; import resolves that alias back to a key id.
+- [x] Workspace XML export/import carries the pin via `@_key_id`, so the round-trip no longer
+      silently drops key pinning.
+- [x] Diagnostics added for a fallback without a provider (rejected by Bifrost 2.2.4+) and for
+      pinned fallbacks (Bifrost ≤ 2.2.2 cannot decode the row and disables all routing rules).
+- [x] AI drafts keep fallback key pins and drop fallbacks that have no provider.
+- [x] XML workspace import no longer drops every rule attribute (id, name, priority, scope, enabled).
+
+### Validation
+- [x] `tsc --noEmit` clean; `vitest run` passing; `vite build` clean.
+
+## v0.2.9 Build 26100507 — API mode: live gateway sync ✅
+
+### What changed
+- [x] Added a second, exclusive Connect mode for a live Bifrost gateway. `connectionSource:
+      'file' | 'api'` in `useStore` decides which source the canvas mirrors; file mode is untouched
+      and stays the default.
+- [x] New `src/lib/bifrostApi.ts`: the single module that talks to a gateway. CRUD, the
+      `<2.0.0` prefix fallback (`/api/governance/routing-rules`), and `BifrostApiError` carrying
+      the status so 401 / 404 / "bridge down" stay distinguishable.
+- [x] New `src/lib/sync.ts`: `diffRules` compares canvas rules against the gateway over the write
+      shape, `applyDiff` runs create → update → delete and stops at the first failure.
+- [x] `toWriteShape` / `toUpdateShape` keep the GET and write shapes apart and regenerate `query`
+      from the CEL on every push.
+- [x] Rules that exist only in the Bifrost dashboard hydrate into the canvas and are editable.
+- [x] Unmodelled fields (`scope`, `scope_id`, `priority`, `ttft_timeout_ms`) are preserved across
+      a push instead of being reset, and never trigger a push on their own.
+- [x] Auto-sync: debounced 800 ms toggle in `useUserSettings.autoSync`, **off by default**.
+      `syncNow()` is always reachable from the TopBar, which also shows the unsynced count.
+- [x] Store guards: `saveToDb`, Diff, SQL Browser and the SQLite export are hidden in API mode;
+      `markDirty()` routes to `scheduleSync()` instead of the IndexedDB cache.
+- [x] `scripts/local-bridge.mjs` is now a whitelist proxy for the gateway — only the version,
+      health and routing-rule routes pass through. Methods extended to POST/PUT/DELETE.
+- [x] `GET /api/health` reports gateway URL, reachability, version and token validity.
+- [x] Direct browser transport kept as a fallback; token is session-only, never persisted.
+- [x] New settings: `bifrostApiUrl` + `autoSync`. No token field — the bridge owns the secret.
+
+### API constraints that shaped the design
+- `PUT /api/routing/rules/{id}` is partial but supplying `targets` replaces the whole list, so a
+  push always carries a complete rule body — never a field delta.
+- The update schema has no `scope`/`scope_id`, so a scope change is delete + create with a new id.
+- The GET shape carries `id`/`created_at`/`updated_at`, which no write schema accepts.
+- Bifrost's CORS defaults to `*`, which is why direct mode works locally but is not the default.
+
+### Bugs found by testing against a mock gateway, all fixed
+- [x] `scope_id` was sent in the PUT body; the update schema rejects it.
+- [x] A scope change emitted a delete without a create, which would have dropped the rule from the
+      gateway entirely.
+- [x] The bridge whitelist matched `/routing/rules` instead of `/api/routing/rules` → every
+      request 403'd.
+- [x] The bridge double-encoded bodies, delivering the rule to the gateway as a string.
+
+### Validation
+- [x] `src/lib/sync.test.ts` — 17 cases covering no-op diffs, full write shape on update, scope
+      moves, weight rejection, error normalization and apply ordering.
+- [x] Full suite: 95 tests passing, `tsc --noEmit` clean, production build succeeds.
+- [x] End-to-end against a mock gateway: 18/18 — bridge connect, create, update, delete, unchanged
+      rules producing no traffic, server-only fields ignored, `query` regenerated, governance
+      fallback, 401 vs status 0, and the write shape carrying no `id`/timestamps.
+- [x] Bridge whitelist verified: `/api/config` returns 403.
+- [x] Acceptance criteria and the full coverage map: [`TESTING.md`](./TESTING.md).

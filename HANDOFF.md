@@ -3,8 +3,10 @@
 > Geschrieben als Übergabe, weil der Kontext der Erstellungs-Session voll war.
 > Diese Datei ist der vollständige Stand — nicht die Chat-Historie lesen, das hier lesen.
 
-**Projekt:** Bifrost Router Studio · **Version** 0.2.9 · **Build** 26100604
-**Stand:** vier Skills geschrieben und evaluiert, zwei echte Bugs in `bifrostApi.ts` gefunden und gefixt, Iteration 2 ausstehend.
+**Projekt:** Bifrost Router Studio · aktuelle Version/Build: siehe `src/lib/version.ts`
+(Hier genannte Zahlen sind nach dem nächsten Bump veraltet — deshalb keine hier.)
+**Stand:** vier Skills geschrieben und über zwei Eval-Läufe bewertet, zwei echte Bugs in
+`bifrostApi.ts` und neun Doku-Bugs gefunden — alle neun angewendet, `copy-wasm.mjs` entfernt.
 
 ---
 
@@ -48,94 +50,123 @@ Top-Level-`build` traf — hätte beim nächsten Release das Vite-Kommando zerst
 
 ---
 
-## Was offen ist: Iteration 2
+## Eval-Lauf 2 — abgeschlossen
 
-Zwei Befunde aus Eval-Lauf 1, die einen zweiten Durchlauf brauchen.
+Beide Aufgaben sind umgesetzt, beide haben gewirkt. Der Lauf hat zusätzlich **neun echte Doku-Bugs**
+gefunden, die vorher niemand gesehen hatte.
 
-### Aufgabe A — `doc-audit`-Testfragen austauschen
+### Aufgabe A — erledigt
 
-`.claude/skills/doc-audit/evals/evals.json`, Eval 1 hat eine **falsche Prämisse**:
+`doc-audit` Eval 1 hat jetzt eine echte falsche Prämisse: [TESTING.md:35](TESTING.md#L35) behauptet,
+`bifrostDb.test.ts` werde von `io.test.ts` mitabgedeckt. Die Datei existiert unter
+`src/lib/db/`, hat 10 Tests, läuft eigenständig — und wer nur in `src/lib/` sucht, findet sie nicht.
 
-> „Die README sagt, es gibt Telemetrie auf den Targets. Stimmt das noch?"
+**Ergebnis: der Test diskriminiert nicht.** Mit Skill und Baseline finden denselben Befund mit
+gleicher Beweisführung (12 vs. 10 Calls). Ehrlich: für die Frage *existiert diese Behauptung noch*
+ist ein Regelwerk neutral — das Modell prüft von sich aus nach.
 
-Die README erwähnt Telemetrie nirgends (seit v0.2.8 entfernt). Mit-Skill und Baseline gaben
-identische Antworten — der Test diskriminiert nicht.
+### Aufgabe B — erledigt, wirkt
 
-**Zwei Optionen:** eine Prämisse wählen, die tatsächlich falsch ist, oder eine Frage, die einen
-*echten* Restbestand prüft. Kandidaten für echten Restbestand:
+Neue Sektion *Gotcha oder bekannte Grenze?* in
+[`.claude/skills/doc-set/references/file-roles.md`](./.claude/skills/doc-set/references/file-roles.md)
+plus ein Verweis aus dem SKILL.md, weil die Zweideutigkeit in Schritt 1 entstand.
 
-- `src/lib/telemetry.ts` ist gelöscht, `PROGRESS.md` führt die Funktion unter der v1.3.0-Überschrift
-  weiter als `[x]` (mit Entfernungs-Vermerk, also nicht falsch — aber eine gute Übung im Umgang)
-- Die Build-Nummer stand bis eben in `CLAUDE.md` — ein Beispiel für die Regel „Zahlen gehören in
-  Code-Dateien, nicht in Doku"
+| | Iteration 1 | Iteration 2 |
+| --- | --- | --- |
+| mit Skill | `CLAUDE.md` Fallstricke | **`TODO.md`, begründet** |
+| ohne Skill | `ARCHITECTURE.md` Sync-Semantik | `ARCHITECTURE.md` Sync-Semantik |
 
-**Wichtig:** Keine neue Datei erfinden, die es nicht gibt. Ein Audit-Test braucht einen echten
-Befund, sonst misst er nichts.
+Die Baseline-Antwort ist über beide Iterationen stabil. Die Skill-Antwort hat sich von einer
+vertretbaren, aber falschen Einordnung zur begründeten korrigiert: *niemand tut etwas Falsches,
+es fehlt schlicht eine Prüfung*.
 
-### Aufgabe B — `doc-set`-Rollenmatrix schärfen
+**Was der Skill wirklich bewegt:** begründeter, nicht richtiger. Die Baseline-Antwort auf eval-3
+ist nicht falsch — sie priorisiert nur anders, weil sie die Frage nach dem *Ort* stellt statt nach
+der *Art*.
 
-Die Frage „wo gehört hin, dass der Sync keine Konflikterkennung hat" wurde unterschiedlich
-beantwortet:
+### Der eigentliche Befund des Laufs
 
-| | Antwort |
-| --- | --- |
-| mit Skill | `CLAUDE.md` → *Fallstricke* |
-| ohne Skill | `ARCHITECTURE.md` → *Sync-Semantik* |
+**Kein einziger der neun Doku-Bugs stammt aus einem Lauf mit Skill — außer einem.** Die Baseline
+fand mehr und fand tiefer. Das revidiert die Aussage aus Eval-Lauf 1 in die andere Richtung.
 
-Beide sind vertretbar, weil der Fall gleichzeitig Gotcha **und** bekannte Grenze ist.
-`.claude/skills/doc-set/references/file-roles.md` trennt die beiden nicht.
+### Neun Doku-Bugs, alle gegen den Code verifiziert
 
-**Erwartete Lösung:** eine Entscheidungsregel, die sagt, wann etwas Gotcha ist und wann bekannte
-Grenze. Vorschlag zur Diskussion:
+| # | Fundstelle | Befund |
+| --- | --- | --- |
+| 1 | [`CLAUDE.md:70`](./CLAUDE.md#L70) | Build `26100507`, tatsächlich `26100604`. Der Versioning-Vertrag widerspricht dem Code. |
+| 2 | [`ARCHITECTURE.md:56`](./ARCHITECTURE.md#L56) | Loader als `initSqlJs({ locateFile })` auf `public/` beschrieben. Real löst er über Vites `?url`-Pipeline auf; `copy-wasm.mjs` ist toter Ballast. |
+| 3 | [`DESIGN.md:85`](./DESIGN.md#L85) | Dataviz-Tabelle führte `Model` und `Complexity` als aktuelle Elemente, fehlte aber `Condition` und `Logic`. Beide sind legacy — Komponente da, aber weder in `nodeTypes` noch in der Palette. |
+| 4 | [`DESIGN.md:40`](./DESIGN.md#L40) | Section-Labels sind `text-[11px]`, nicht `text-[10px]`. |
+| 5 | [`ARCHITECTURE.md:72`](./ARCHITECTURE.md#L72) | `toWriteShape` liegt in `bifrostApi.ts`, nicht in `sync.ts` (das importiert es nur). |
+| 6 | [`TESTING.md:35`](./TESTING.md#L35) | `bifrostDb.test.ts` als mitabgedeckt deklariert; Tabelle summiert 85 statt 95. |
+| 7 | [`CLAUDE.md:40`](./CLAUDE.md#L40) | CEL-Variablenliste unvollständig: `request_size` und `time.hour` fehlen. |
+| 8 | [`PROGRESS.md:1`](./PROGRESS.md#L1) | Überschrift „Changelog", während der Dateikörper und README es Engineering-Log nennen — Selbstwiderspruch. |
+| 9 | eigene Position | „CLAUDE.md verweist noch nicht auf die vier Skills" — trifft nur noch teilweise zu (`gateway-smoke` wird an einer Stelle genannt). |
 
-> Ein **Gotcha** beschreibt eine Falle mit einer konkreten Fehlerursache — „du tust X, und dann
-> passiert Y unerwartet". Eine **bekannte Grenze** beschreibt, was das Produkt nicht kann, ohne
-> dass jemand dadurch überrascht wird. Konflikterkennung fehlt: Niemand tut etwas Falsches, es gibt
-> nur keine Prüfung → **bekannte Grenze** (`TODO.md`), nicht Gotcha.
+**Alle neun sind angewendet.** Ein Befund war beim Nachprüfen halb falsch: die Baseline behauptete,
+der Model-Node sei gelöscht — tatsächlich existiert `ModelNode` weiter, er ist nur nicht mehr
+registriert. Die Korrektur in `DESIGN.md` beschreibt den Ist-Zustand statt die Behauptung zu
+übernehmen.
 
-Diese Regel gehört nach `file-roles.md` und als Testfall in `doc-set/evals/evals.json`.
+Befunde 2, 3, 4 und 7 stammen aus dem **mit-Skill**-Lauf. Die Baseline fand 1, 2, 4, 5, 6 und
+die PROGRESS-Inkonsistenz.
 
----
+### Was Eval-Lauf 2 über die Testanlage lehrt
 
-## Wie der zweite Durchlauf läuft
+- **doc-audit braucht breite Aufträge, doc-set braucht schmale.** Der Voll-Audit lief in 66–68
+  Calls und fand 7 Befunde; die Beratungsfragen in 6–12 Calls. Der Test mit der besten
+  Trefferquote war der größte.
+- **Die Baseline ist hier stärker, nicht schwächer.** Zwei Befunde hat nur sie gefunden
+  (DESIGN.md:85, CLAUDE.md:40) — beide sind Details, die ein Audit-Fokus übersieht.
+- **`doc-set` diskriminiert nur bei echter Mehrdeutigkeit.** eval-1 (keine Mehrdeutigkeit) →
+  identische Antworten. eval-3 (Mehrdeutigkeit) → klarer Unterschied.
 
-Die Prozedur aus der Skill-Creator-Doku, konkret für dieses Repo:
+### Verfahrensfehler, der in Iteration 1 noch latent war
 
-1. Skills nach Aufgabe A und B überarbeiten
-2. Kopien anlegen — die Evals haben Seiteneffekte, parallele Läufe im selben Repo kollidieren:
-   ```bash
-   rm -rf /tmp/evals && mkdir -p /tmp/evals
-   for cfg in with baseline; do for s in doc-set doc-audit; do
-     d=/tmp/evals/$s-$cfg; mkdir -p $d
-     git ls-files -z | tar --null -T - -cf - | tar -xf - -C $d
-     cp -r .claude $d/.claude
-     ln -s "$PWD/node_modules" $d/node_modules
-   done; done
-   ```
-3. Agenten starten — **mit `model: sonnet`**. Ohne Override schlägt der Default
-   `k-obs/subagent-flash` fehl mit `Model is unavailable`.
-4. Baseline bekommt **keinen** Skill-Pfad, sonst ist der Vergleich wertlos.
-5. Ergebnisse nach `<skill>-workspace/iteration-2/eval-N/{with_skill,without_skill}/outputs/`
-6. Vergleich: hat sich die Antwort gegenüber `iteration-1` verbessert?
+Der Sandbox-Befehl aus HANDOFF.md war falsch: `git ls-files` liefert `.claude/settings.local.json`
+mit, und `cp -r .claude $d/.claude` legte deshalb **nested** `.claude/.claude/skills/` an. Alle
+Baseline-Läufe hatten die Skills und zitierten sie. Korrigiert:
 
-Aus Iteration 1 liegen 15 Ergebnisdateien in den vier `*-workspace/`-Ordnern (gitignored).
-
----
-
-## Fallen, die in dieser Session Zeit gekostet haben
-
-**Subagent-Modell.** `model: sonnet` muss explizit gesetzt werden, sonst `Model is unavailable`.
-
-**Ports.** `gateway-smoke/scripts/smoke.mjs` belegt 8080 und 8787. Für parallele Läufe:
-`--port 19080 --bridge-port 19787`. Die Bridge selbst: `BFRS_BRIDGE_PORT`.
-
-**Seiteneffekte der Evals.** `release-bump` schreibt in `package.json`, `gateway-smoke` startet
-Server, `doc-set` legt Dateien an. Ohne Kopien kollidieren parallele Läufe.
-
-**`bump.mjs` verändert `package.json`.** Vor dem nächsten `--check` prüfen, ob eine laufende Bridge
-noch auf der alten Build-Nummer hängt — nicht nötig, aber gut zu wissen.
+```bash
+git ls-files -z | grep -zv '^\.claude/' | tar --null -T - -cf - | tar -xf - -C $d
+# Skills nur in die with-Kopien:
+[ "$cfg" = "with" ] && cp -r .claude "$d/.claude"
+```
 
 ---
+
+## Was offen ist
+
+### Neun Doku-Bugs — erledigt
+
+Alle neun angewendet. Zusätzlich entschieden: **`scripts/copy-wasm.mjs` und `public/sql-wasm.wasm`
+sind entfernt**, samt `copy-wasm`-Aufrufen in `dev` und `build`. Belegt mit einem kompletten
+`npm run build` ohne die Vorstufe — die WASM landet als Vite-Asset in `dist/assets/`.
+
+Bewusst **nicht** übernommen: die Formulierung von Befund 3 aus dem Agenten-Report („Model-Node
+gelöscht"). Prüfen hat gezeigt, dass die Komponente existiert und nur die Registrierung fehlt —
+die Doku beschreibt den Ist-Zustand, nicht die Annahme.
+
+### Vier Fehlschläge durch den Provider
+
+`doc-audit eval-3` ist in beiden Konfigurationen an API-Stream-Abbrüchen
+(`provider closed the stream`) viermal gestorben, inklusive einmal bei einem Lauf mit nur
+18 Calls. Nicht auf den Auftrag zurückzuführen — `npm test` braucht 7 s, ist also nicht die
+Ursache. Falls das wieder auftritt: Auftrag verkleinern, nicht den Provider wechseln.
+
+### Nicht erledigt
+
+- **`CLAUDE.md` verweist nur an einer Stelle auf einen Skill** (Nennung von `gateway-smoke` in den
+  Fallstricken). Die vier Skills stehen weder in der Rolle-Tabelle noch in einer eigenen Sektion.
+  Ergänzen, wenn der Status der Skills feststeht.
+- Die doc-Skills wurden **nicht** bewertet als Gate für Commits. Der Befund oben sagt eher das
+  Gegenteil: sie sind eine gute Lektürehilfe, keine Fehlerquelle.
+- Kein Viewer geöffnet — die Auswertung lief über den Vergleich der Antworten, weil nur vier
+  Tests liefen und die Abweichungen direkt sichtbar waren.
+- API-Modus-Grenzen: keine Konflikterkennung, kein Offline-Queue, `ttft_timeout_ms`/`scope`/`priority`
+  nicht im Canvas editierbar — steht in [`TODO.md`](./TODO.md)
+- Plugins: 20 Stück sind aktiviert und wurden nie benutzt (~5.700 est. Tokens pro Session). Der
+  Nutzer hat die Deaktivierung abgelehnt — nicht wieder vorschlagen, ohne gefragt zu werden
 
 ## Schnellprüfung
 
@@ -147,12 +178,3 @@ node .claude/skills/release-bump/scripts/bump.mjs --check
 ```
 
 Alle vier Skills sind mit dem `quick_validate.py` aus dem skill-creator-Plugin geprüft.
-
-## Nicht erledigt
-
-- Iteration 2 der Skill-Evaluierung (Aufgaben A und B oben)
-- API-Modus-Grenzen: keine Konflikterkennung, kein Offline-Queue, `ttft_timeout_ms`/`scope`/`priority`
-  nicht im Canvas editierbar — steht in [`TODO.md`](./TODO.md)
-- `CLAUDE.md` verweist noch nicht auf die vier Skills — sinnvoll, aber erst wenn sie stabil sind
-- Plugins: 20 Stück sind aktiviert und wurden nie benutzt (~5.700 est. Tokens pro Session). Der
-  Nutzer hat die Deaktivierung abgelehnt — nicht wieder vorschlagen, ohne gefragt zu werden

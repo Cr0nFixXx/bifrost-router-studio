@@ -9,7 +9,7 @@ Kriterien, nach denen eine Änderung als fertig gilt.
 npm test           # Vitest, einmal
 npm run test:watch # Vitest, Watch-Modus
 npm run typecheck  # tsc --noEmit
-npm run build      # copy-wasm + tsc --noEmit + vite build
+npm run build      # tsc --noEmit + vite build
 ```
 
 ## Test-Landkarte
@@ -31,8 +31,10 @@ npm run build      # copy-wasm + tsc --noEmit + vite build
 | `customTemplates.test.ts` | 3 | Template-Packs |
 | `io.test.ts` | 2 | Import/Export der Workspace-Formate |
 | `theme.test.ts` | 2 | Theme-Tokens |
+| `db/bifrostDb.test.ts` | 10 | SQL.js-DB (`BifrostDb.ts`): Schema, Rule-CRUD, Priorities, exportBytes, config.json |
 
-`bifrostDb.test.ts` wird von `io.test.ts` mitabgedeckt.
+Die Tabelle oben summiert genau die Kopfzeile — wenn du eine Testdatei hinzufügst, gehört sie
+hier mit, sonst driftet die Summe.
 
 ## Abnahme-Kriterien (DoD)
 

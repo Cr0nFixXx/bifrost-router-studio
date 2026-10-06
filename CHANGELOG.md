@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.9 — Build 26100619
+
+- **Documentation audit (iteration 2 of the skill evaluation)** found nine incorrect statements in
+  the docs and corrected all of them: the build number in `CLAUDE.md`, the WASM loader description
+  in `ARCHITECTURE.md`, two rows in `DESIGN.md`, the misplaced `toWriteShape`, the test-map entry
+  in `TESTING.md`, the incomplete CEL variable list, the `PROGRESS.md` title, and one stale
+  hand-off claim.
+- `DESIGN.md` now marks `model` and `complexity` as legacy: both still have a component, but
+  neither is registered in `nodeTypes` nor in the palette.
+- `scripts/copy-wasm.mjs` and `public/sql-wasm.wasm` are removed, along with their `copy-wasm`
+  hooks in `dev` and `build`. The WASM already loaded through Vite's asset pipeline, so the
+  pre-build copy step was dead weight.
+- The `doc-audit` evaluation prompt now uses a genuinely false premise (it had one about telemetry
+  that no file ever made), and `doc-set` gained a decision rule distinguishing a gotcha from a
+  known limitation.
+
 ## 0.2.9 — Build 26100604
 
 - Added an **API mode**: the Connect screen now offers either the SQLite file (unchanged, still the

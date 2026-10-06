@@ -1,4 +1,4 @@
-# PROGRESS.md — Changelog
+# PROGRESS.md — Engineering Log
 
 Status tracking for the project.
 
@@ -899,3 +899,87 @@ and there's a real template gallery (built-in + user packs).
       fallback, 401 vs status 0, and the write shape carrying no `id`/timestamps.
 - [x] Bridge whitelist verified: `/api/config` returns 403.
 - [x] Acceptance criteria and the full coverage map: [`TESTING.md`](./TESTING.md).
+
+## v0.2.9 Build 26100604 — Documentation split, four project skills, dead version fork ✅ (backfilled)
+
+Entry written after the fact: this build changed docs and added skills but never got an
+engineering-log entry. Recovered from `git log`, so it is shorter than an entry recorded at the
+time.
+
+### What changed
+- [x] `CLAUDE.md` was split from 242 self-contradicting lines into a nine-file doc set with one
+      role per file. Created `ARCHITECTURE.md`, `TESTING.md`, `MILESTONES.md`.
+- [x] Removed `src/lib/telemetry.ts` (no importers since v0.2.8) and its last doc mentions.
+- [x] Four project skills under `.claude/skills/`: `doc-set`, `doc-audit`, `release-bump`,
+      `gateway-smoke`, each with scripts and an eval set.
+- [x] **Fixed a dead code path:** the Bifrost `<2.0.0` fallback requested `/api/governance/rules`,
+      a route that does not exist — the real one is `/api/governance/routing-rules`. The fork was
+      unreachable while every test still passed, because a mock that 404s the collection accepts a
+      wrong path too. `VersionPrefix` now carries prefix *and* rules suffix.
+- [x] `version()` bypassed the rules whitelist, so `/api/version` was rejected; now addressed
+      directly.
+
+### Validation
+- [x] Full suite: 95 tests, `tsc --noEmit` clean, production build succeeds.
+- [x] Gateway smoke extended to 20 checks, including a write through the legacy prefix — the only
+      way to prove that path is right.
+
+## v0.2.9 Build 26100619 — Documentation audit (skill eval iteration 2), copy-wasm removal ✅
+
+**Headline:** the second evaluation run of the four project skills found **nine incorrect
+statements in the docs**. All nine were verified against the code before being corrected.
+
+### Why this shape
+Eval run 1 had two defective tests: `doc-audit` eval 1 asserted a premise no file ever made
+(telemetry), and `doc-set` had no rule separating a gotcha from a known limitation. Both were
+rewritten, then the full run was repeated with-skill and baseline in isolated copies.
+
+### What changed — skills
+- [x] `doc-audit` eval 1 now uses a real false premise: `TESTING.md` claimed `bifrostDb.test.ts`
+      was covered by `io.test.ts`. The file exists at `src/lib/db/`, has 10 tests, runs on its own.
+- [x] `doc-set` gained *Gotcha oder bekannte Grenze?* in `references/file-roles.md`, plus a pointer
+      from `SKILL.md`. Decision question: **can someone do something wrong by not knowing this?**
+      Yes → `CLAUDE.md` fallstricke. No → `TODO.md` known limitations.
+
+### What changed — the nine doc bugs
+- [x] `CLAUDE.md` carried build `26100507` while the code said `26100604`. The versioning contract
+      now points at `src/lib/version.ts` instead of restating the number — the root cause was the
+      number being in a doc at all.
+- [x] `ARCHITECTURE.md` described the WASM loader as `initSqlJs({ locateFile })` off `/sql-wasm.wasm`
+      in `public/`. It actually resolves via Vite's `?url` asset import and has done so since the
+      loader gained the comment `no stale public copy`.
+- [x] `DESIGN.md` listed `Model` and `Complexity` as current elements and omitted `Condition` and
+      `Logic`. Both listed ones still have a component in `SimpleNodes.tsx` but are registered
+      nowhere — the agent that reported this called them "deleted", which is wrong; the table now
+      describes the actual state.
+- [x] `DESIGN.md`: section labels are `text-[11px]`, not `10px`.
+- [x] `ARCHITECTURE.md`: `toWriteShape` lives in `bifrostApi.ts`, not `sync.ts`.
+- [x] `TESTING.md`: the test-map footnote was a false justification for a missing table row. Row
+      added, sum now matches the "95 tests / 14 files" headline.
+- [x] `CLAUDE.md`: CEL variable list was missing `request_size` and `time.hour`.
+- [x] `PROGRESS.md`: title said "Changelog" while the body and README called it an engineering log.
+- [x] `HANDOFF.md`: one claim was stale and is now stated precisely.
+
+### What changed — code
+- [x] Removed `scripts/copy-wasm.mjs` and `public/sql-wasm.wasm`, plus the `copy-wasm` hooks in
+      `dev` and `build`. Nothing read the copy since the loader moved to Vite's asset pipeline.
+- [x] Build number bumped at both places: `src/lib/version.ts` and top-level `package.json:build`.
+
+### What the evaluation actually showed
+- [x] `doc-set` discriminates: with the skill the answer became `TODO.md` with a stated reason;
+      the baseline still said `ARCHITECTURE.md`. In run 1 the skill itself had answered
+      `CLAUDE.md`, so the new rule corrected a wrong answer.
+- [x] `doc-audit` does **not** discriminate: both sides found the same defect in 10 vs 12 calls.
+      For the broad audit the baseline found two findings the skill run did not. Honest
+      conclusion: the skill organises a search, it does not find more than a careful one.
+- [x] A harness bug in the sandbox procedure had left skills in every baseline copy at a nested
+      `.claude/.claude/skills/` path, which would have made the comparison worthless. Fixed: the
+      archive now excludes `.claude` and only the with-skill copies get it.
+
+### Validation
+- [x] `npm test` — 95 tests in 14 files, all passing.
+- [x] `npm run build` succeeds **without** the removed pre-build step; the WASM lands as
+      `dist/assets/sql-wasm-*.wasm`.
+- [x] `node .claude/skills/release-bump/scripts/bump.mjs --check` — both build locations agree.
+- [x] Every relative doc link across the doc set resolves to an existing file.
+- [x] Both edited skills pass `quick_validate.py`.

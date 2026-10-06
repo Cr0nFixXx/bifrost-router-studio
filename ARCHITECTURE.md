@@ -53,8 +53,8 @@ Workspaces migriert werden können (`complexity → Condition` mit `complexity_t
 
 ## Daten-Schicht (File-Modus)
 
-- `src/lib/sqljs/loader.ts` — Singleton `initSqlJs({ locateFile })` auf `/sql-wasm.wasm`
-  (kopiert nach `public/` durch `scripts/copy-wasm.mjs`). Liefert `openDatabase(buffer?)`.
+- `src/lib/sqljs/loader.ts` — Singleton, lädt die WASM über Vites Asset-Import
+  (`sql.js/dist/sql-wasm.wasm?url`), nicht über einen Pfad unter `public/`. Liefert `openDatabase(buffer?)`.
 - `src/lib/db/bifrostDb.ts` — **das einzige Modul, das SQLite anfasst.** Wickelt eine
   `sql.js.Database` ein und liefert typisierte CRUD für `routing_rules` / `providers` / `models`,
   dazu `exportConfig()`/`importConfig()` (Bifrost-`config.json`-Projektion) und `exportBytes()`
@@ -69,8 +69,8 @@ Workspaces migriert werden können (`complexity → Condition` mit `complexity_t
   `ApiRule` (GET) und `ApiRuleCreate`/`ApiRuleUpdate` (POST/PUT) sind bewusst getrennte Typen.
 - `src/lib/sync.ts` — reine Diff-/Apply-Logik. `diffRules(local, remote)` liefert
   create/update/delete; `applyDiff` führt sie in dieser Reihenfolge aus und bricht beim ersten
-  Fehler ab. `toWriteShape`/`toUpdateShape` konvertieren, `rejectionReason` weist schlechte
-  Gewichte zurück.
+  Fehler ab. `toUpdateShape` (hier) und `toWriteShape` (in `bifrostApi.ts`) konvertieren,
+  `rejectionReason` weist schlechte Gewichte zurück.
 - **Transports** — `bridgeTransport` (Default; die Bridge hält den Token) und `directTransport`
   (Token aus einem session-only Component-Feld, nie persistiert).
 - **Auto-Sync** — debounced 800 ms, `useUserSettings.autoSync`, **default aus**. `syncNow()` ist

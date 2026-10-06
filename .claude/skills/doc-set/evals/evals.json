@@ -41,11 +41,14 @@
     {
       "id": 3,
       "prompt": "Wo schreib ich hin dass der Sync zum Gateway keine Konflikterkennung hat? Also dass wenn jemand parallel im Bifrost-Dashboard Regeln ändert, der letzte Push gewinnt.",
-      "expected_output": "Erkennt das als bekannte Grenze und verweist auf TODO.md (Known limitations) — nicht auf CLAUDE.md, weil es kein Gotcha mit einer konkreten Fehlerursache ist, sondern eine Einschränkung des aktuellen Zuschnitts.",
+      "expected_output": "Erkennt das als bekannte Grenze und verweist auf TODO.md — nicht auf CLAUDE.md, weil niemand durch das Nicht-Wissen etwas Falsches tut: es gibt keine Fehlerursache beim Codieren, sondern schlicht keine Prüfung. Begründet die Einordnung, statt sie nur zu behaupten, und legt keine neue Doku-Datei an.",
       "files": [],
       "assertions": [
         {
           "text": "Verweist auf TODO.md als Ort für bekannte Grenzen"
+        },
+        {
+          "text": "Begründet die Wahl: es gibt keine konkrete Fehlerursache beim Codieren, es gibt schlicht keine Prüfung"
         },
         {
           "text": "Legt das nicht als Fallstrick in CLAUDE.md ab"

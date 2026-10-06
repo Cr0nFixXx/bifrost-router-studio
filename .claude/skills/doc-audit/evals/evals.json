@@ -3,18 +3,21 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Die README sagt, es gibt Telemetrie auf den Targets. Stimmt das noch?",
-      "expected_output": "Verifiziert gegen den Code statt die Datei zu glauben. Findet, dass die Telemetry-UI in v0.2.8 entfernt wurde und src/lib/telemetry.ts keine Importer hat. Berichtet als Befund mit Fundstelle und nennt die Quelle der Wahrheit.",
+      "prompt": "TESTING.md schreibt in der Test-Landkarte, die Datei bifrostDb.test.ts werde von io.test.ts mitabgedeckt und taucht deshalb dort nicht auf. Ich find die Datei aber nirgends im Projekt. Stimmt das, oder ist die Doku falsch?",
+      "expected_output": "Verifiziert gegen das Repo statt die Doku zu glauben. Findet src/lib/db/bifrostDb.test.ts (Unterordner db/, nicht src/lib/ — deshalb naechtig), zaehlt ihre Tests, und berichtet als Befund: die Doku-Aussage ist falsch, die Datei existiert, laeuft eigenstaendig und fehlt in der Landkarte. Nennt die Fundstelle und die Quelle der Wahrheit (npm test).",
       "files": [],
       "assertions": [
         {
-          "text": "Führt einen grep gegen src/ aus, um die Telemetry-Existenz zu prüfen"
+          "text": "Sucht die Datei repo-weit und nicht nur in src/lib/ — findet src/lib/db/bifrostDb.test.ts"
         },
         {
-          "text": "Prüft, ob src/lib/telemetry.ts noch Importer hat"
+          "text": "Prüft die Testanzahl der gefundenen Datei (nicht nur ihre Existenz)"
         },
         {
-          "text": "Berichtet nicht einfach, was die README sagt, sondern was der Code zeigt"
+          "text": "Berichtet als Ergebnis, dass die Doku falsch ist — nicht, dass die Datei fehlt"
+        },
+        {
+          "text": "Belegt es mit npm test oder einer vergleichbaren Quelle der Wahrheit"
         },
         {
           "text": "Nennt die Fundstelle (Datei und Zeile)"

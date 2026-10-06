@@ -51,8 +51,10 @@ No request traffic is ever proxied, in either mode.
 - `src/lib/bifrostQuery.ts` — CEL → Bifrost's react-querybuilder JSON (`celToBifrostQuery`).
 
 Supported variables match Bifrost: `model`, `provider`, `request_type`, `headers[...]`, `params[...]`,
-`team_name`, `customer_id`, `virtual_key_name`, `budget_used`, `tokens_used`, `request`, `complexity_tier`.
+`team_name`, `customer_id`, `virtual_key_name`, `budget_used`, `tokens_used`, `request`,
+`request_size`, `time.hour`, `complexity_tier`.
 Operators: `== != > < >= <= in startsWith endsWith contains matches`, combined with `&& || !`.
+**`src/lib/cel.ts` is the authority for this list** — if it disagrees with the code here, the code wins.
 
 ## Custom nodes / edges
 
@@ -67,7 +69,9 @@ Operators: `== != > < >= <= in startsWith endsWith contains matches`, combined w
 
 ## Versioning contract
 
-Version `0.2.9`, build `26100507`. **Do not change the app version unless the user explicitly asks.**
+**Do not change the app version unless the user explicitly asks.** The current version and build
+number live in `src/lib/version.ts` — that file is the source of truth, not this one, which is why
+this section states no number.
 The build number must be bumped on **every** code change, using `YYMMDDHH` in Europe/Berlin time,
 in **both** `src/lib/version.ts` and the top-level `"build"` field in `package.json`.
 Release history: [`CHANGELOG.md`](./CHANGELOG.md).

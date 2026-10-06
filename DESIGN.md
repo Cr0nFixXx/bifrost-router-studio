@@ -37,7 +37,7 @@ Configure in `tailwind.config.js` → `theme.extend.colors`.
 
 - Sans: **Inter** (UI). Mono: **JetBrains Mono** (CEL, expressions, IDs). Loaded via Google Fonts
   in `index.html`; class `font-mono` for code.
-- Scale: page titles `text-lg`, section labels `text-[10px]` uppercase tracked (`tracking-wider`)
+- Scale: page titles `text-lg`, section labels `text-[11px]` uppercase tracked (`tracking-wider`)
   via `.label`.
 
 ## Motion (Framer Motion)
@@ -78,12 +78,17 @@ Configure in `tailwind.config.js` → `theme.extend.colors`.
 | Element | Color |
 | --- | --- |
 | Trigger / rule | violet `#a78bfa` |
-| Complexity | amber `#fbbf24` |
+| Condition | amber `#fbbf24` |
+| Logic | teal `#5eead4` (AND) / violet `#a78bfa` (OR) |
 | Target | cyan `#22d3ee` |
 | Fallback | red `#f87171` |
 | Provider | green `#34d399` |
-| Model | teal `#5eead4` |
 | Active edge (sim) | teal glow + animated pulse |
+
+**Legacy (registriert nicht, nur für Workspace-Migration):** `model` (teal `#5eead4`),
+`complexity` (amber `#fbbf24`). Beide haben noch eine Komponente in `SimpleNodes.tsx`,
+stehen aber weder in `nodeTypes` noch in der Palette — Farben hier siehst du daher nie
+im Canvas. Quelle: `FlowCanvas.tsx` (`nodeTypes`) und `Sidebar.tsx` (`PALETTE`).
 
 ## Accessibility & polish
 

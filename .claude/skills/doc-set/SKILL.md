@@ -41,6 +41,14 @@ Wenn du nicht entscheiden kannst, ist die Information wahrscheinlich noch nicht 
 gedacht. Ein Halbsatz, der in keine Rolle passt, ist ein Zeichen dafür, dass die Entscheidung
 fehlt — nicht dafür, dass eine neue Datei gebraucht wird.
 
+**Der häufigste Streitfall: Gotcha oder bekannte Grenze?** Beide klingen nach „wichtiges
+Problem", gehören aber an verschiedene Orte — ein Gotcha nach `CLAUDE.md` (Fallstricke), eine
+bekannte Grenze nach `TODO.md`. Die eine Frage, die entscheidet: *Kann jemand durch das
+Nicht-Wissen etwas Falsches tun?* Wenn ja, ist es ein Gotcha; wenn nein, ist es eine Grenze.
+Beispiele, Merkmale und der Grenzfall, wo beides gilt, stehen in `references/file-roles.md`
+unter *Gotcha oder bekannte Grenze?* — lies das, bevor du zwischen `CLAUDE.md` und `TODO.md`
+wählen musst.
+
 ### 2. Prüfen, ob es die Information schon gibt
 
 Bevor du etwas schreibst, such nach ihr. Fast immer existiert sie schon irgendwo — in einem

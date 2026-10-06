@@ -10,3 +10,4 @@ dist-ssr
 *.sqlite-journal
 data/*.sqlite
 *-workspace/
+CLAUDE.local.md

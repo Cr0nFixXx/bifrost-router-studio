@@ -98,6 +98,11 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
 [`PROGRESS.md`](./PROGRESS.md).
 
 **Writing to the gateway**
+- **An empty diff is not a success signal.** `syncNow` reports `idle` and a fresh `lastSyncedAt`
+  whether it wrote ten rules or zero, so "the chip is green" proves nothing about the gateway.
+  Verify a write by re-reading the panel. The diff source must be `getCanvasRules()` — `state.rules`
+  is a snapshot taken at connect time and is **not** updated by canvas edits, so diffing against it
+  compares the gateway with itself and silently pushes nothing.
 - Never round-trip a GET response into POST/PUT. `id`, `created_at`, `updated_at` and `scope` are in
   the read shape but not in any write schema. Go through `toWriteShape` / `toUpdateShape`.
 - `scope`/`scope_id` are absent from the update schema. Moving a rule between scopes is delete +

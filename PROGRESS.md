@@ -1161,3 +1161,55 @@ Milestone mit CSS-Diff eingetragen, nicht als `npm audit fix --force`.
 - [x] Build-Nummer.
 
 Validation: `npm test` 95/95 grün, `npm run build` erfolgreich, `npm audit --omit=dev` 0.
+
+## v0.2.9 Build 26100704 — Synchronisieren schrieb nichts ✅
+
+### Anlass
+„Wenn ich auf Synchronisieren klicke, ändert sich nichts im Bifrost Webpanel." Klick auf
+**Synchronisieren**, Statuszeile meldet Erfolg (`idle`, frischer `lastSyncedAt`) — am Gateway
+passiert nichts.
+
+### Root Cause
+`syncNow` diffte nicht den Canvas, sondern `get().rules`:
+
+```ts
+const local = get().rules.length ? get().rules : workflowToRules(get().nodes, get().edges);
+```
+
+`rules` wird nur bei `openApiSession` und `refreshFromApi` geschrieben — also beim Verbinden und
+nach einem erfolgreichen Push. Jeder Canvas-Edit (`updateNodeData`, `addNode`, `deleteNode`,
+`onConnect`, `onEdgesChange` …) schreibt ausschließlich `nodes`/`edges`. `rules` bleibt damit der
+Connect-Snapshot.
+
+Im API-Modus ist `rules.length > 0`, also greift der `workflowToRules`-Zweig nie. Der Diff
+verglich das Gateway mit sich selbst: `unchanged`, `diffIsEmpty` → `early return`, **null HTTP-Calls**.
+Der Erfolgszustand war der untersuchte Fehler — deshalb sah es nach Funktionieren aus.
+
+Der Fallback-Zweig ist in API-Modus toter Code. Er hat vermutlich die Datei-Modus-Fälle abgedeckt,
+in denen `rules` die DB liest — dort ist aber `saveToDb` zuständig, nicht `syncNow`.
+
+### Zweiter Fund im selben Pfad
+Beim Bauen des Regressionstests fiel ein CEL-Roundtrip-Bug auf: `parseExpression('true')` gab
+`model == ""` zurück. `parseExpression` beendete den Zweig für eine immer-wahre Bedingung mit
+`newGroup()` — und `newGroup()` ist der UI-Starter, der mit **einer leeren Condition** startet.
+Zurückkompiliert wurde das zu `model == ""`, also schrieb ein Sync jede Catch-all-Regel
+(`cel_expression: "true"`) als `model == ""` überschrieben. Betraf auch den Datei-Modus
+(`saveToDb` → `workflowToRules`). Der Zweig gibt jetzt eine Gruppe ohne Conditions zurück.
+
+### What changed
+- [x] `useStore.ts`: `syncNow` difft `get().getCanvasRules()` — dieselbe Quelle, die `saveToDb`,
+      `previewDbDiff` und die Snapshots benutzen. Eine Quelle für „was der Canvas sagt".
+- [x] `cel.ts`: `parseExpression` liefert für `''`/`'true'` eine leere Gruppe statt `newGroup()`.
+- [x] `src/store/syncNow.test.ts`: vier Tests über die echte Kette (`connectApiDirect` mit
+      `fetch`-Mock → `syncNow`): Umbenennung → PUT, neue Regel → POST, gelöschte Regel → DELETE,
+      unveränderter Zustand → kein Write.
+- [x] Build-Nummer an beiden Stellen.
+
+### Warum dieser Bug so lange unbemerkt blieb
+Kein Test hat `syncNow` angefasst — `sync.test.ts` deckt nur die reine Diff-Logik ab, und die war
+korrekt. Die Störung lag an der Übergabe `store → sync.ts`, also genau an der Naht, die eine
+Unit-Test-Suite für reine Funktionen per Konstruktion nicht sieht. Der neue Test geht durch
+`connectApiDirect`, weil das die einzige Ebene ist, an der der Fehler sichtbar wird.
+
+Validation: `npm test` 99/99 grün (vorher 95), `npx tsc --noEmit` fehlerfrei, Regressionstest gegen
+den ungepatchten Stand reproduziert alle drei Schreibfehler.

@@ -588,7 +588,10 @@ export const useStore = create<StudioState>((set, get) => ({
     set({ syncStatus: { ...get().syncStatus, state: 'syncing', error: undefined } });
     try {
       const remote = await activeApi.listRules();
-      const local = get().rules.length ? get().rules : workflowToRules(get().nodes, get().edges);
+      // Canvas is the source of truth. `rules` is only a snapshot taken at
+      // connect/refresh time — diffing it would compare the gateway against
+      // itself and silently push nothing.
+      const local = get().getCanvasRules();
       const diff = diffRulesForSync(local, remote);
       if (diffIsEmpty(diff)) {
         set({

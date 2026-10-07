@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.9 — Build 26100704
+
+- **Synchronize actually writes.** In API mode the sync compared the gateway against its own
+  snapshot from connect time instead of against the canvas, so every edit — rename, new rule,
+  deleted rule — produced an empty diff and zero HTTP calls. The status line still reported
+  success, which is what made it look like a gateway problem. Renames, new rules and deletions
+  now reach the Bifrost panel.
+- **Catch-all rules keep their condition.** A rule whose condition was the always-true `true`
+  round-tripped through the canvas as `model == ""`, so saving silently rewrote it into a
+  condition that matches nothing but a model with an empty name. This affected the file mode too.
+
 ## 0.2.9 — Build 26100702 (Fortsetzung)
 
 - **Build tooling:** bumped `source-map-js` to 1.2.2, clearing a high-severity advisory. It was a

@@ -150,7 +150,10 @@ interface ParseResult {
 export function parseExpression(expr: string): ParseResult {
   const warnings: string[] = [];
   const trimmed = (expr ?? '').trim();
-  if (!trimmed || trimmed === 'true') return { group: newGroup(), warnings };
+  // An always-true condition has no conditions at all. `newGroup()` seeds one
+  // blank condition (it is the "add a condition" starter for the UI), which
+  // compiled back to `model == ""` and silently rewrote every catch-all rule.
+  if (!trimmed || trimmed === 'true') return { group: { id: uid('grp'), combinator: '&&', conditions: [] }, warnings };
 
   try {
     const lexer = new Lexer(trimmed);

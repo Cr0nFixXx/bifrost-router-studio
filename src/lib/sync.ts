@@ -60,9 +60,11 @@ export function rejectionReason(rule: RoutingRule): string | null {
  * does next. Duplicate that logic here and you get rules blocked that would have
  * worked.
  *
- * In API mode the catalog comes from `builtInCatalog()`, a static list in this
- * repo rather than the gateway's own. So "not in the catalog" is a hint, not a
- * finding — which is exactly why it must not stop the push.
+ * In API mode the catalog is read from the gateway (`GET /api/models`), so
+ * "not in the catalog" now usually means "the gateway does not have it". It
+ * still is only a hint: a provider the gateway has configured but reports no
+ * models for stays invisible here, and an empty catalog yields no hints at all
+ * rather than a guess. Which is exactly why it must not stop the push.
  *
  * Targets are included even though only fallbacks are known to be prefix-checked
  * today: if a gateway turns out to be stricter, the hint is already there.

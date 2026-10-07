@@ -109,6 +109,35 @@ export interface ProviderConfig {
   forward_headers?: string[];
 }
 
+/* --- gateway catalog reads: /api/models, /api/providers (see Bifrost handlers) --- */
+
+/** One row of `GET /api/models`. `provider` is the config name, NOT the model vendor. */
+export interface ApiModel {
+  name: string;
+  provider: string;
+  is_deprecated?: boolean;
+  accessible_by_keys?: string[];
+}
+
+/** One row of `GET /api/providers`. Bifrost names a provider after its config id. */
+export interface ApiProvider {
+  name: string;
+  provider_status?: string;
+  status?: string;
+  description?: string;
+}
+
+/** One key of `GET /api/providers/{provider}/keys`. `value` arrives redacted. */
+export interface ApiProviderKey {
+  id: string;
+  name?: string;
+  value?: unknown;
+  models?: string[] | null;
+  weight?: number;
+  enabled?: boolean;
+  status?: string;
+}
+
 /* SQLite row shapes (snake_case on disk, camelCase in the app). */
 export interface RoutingRuleRow {
   id: string;

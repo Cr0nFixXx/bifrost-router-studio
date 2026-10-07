@@ -1298,3 +1298,55 @@ Deaktivieren des Dodgings: `27/28`, mit der Meldung des Users wörtlich.
 Validation: `npm test` 106/106 grün, `npx tsc --noEmit` fehlerfrei, `npm run build` erfolgreich,
 `gateway-smoke` 28/28. Regressionsnachweis: ohne `sync.ts` fallen die Kern-Tests in `sync.test.ts`
 und `syncNow.test.ts` um; ohne Dodging fällt der Smoke-Check mit exakter 500er-Meldung.
+
+## v0.2.9 Build 26100722 — Provider und Modelle kommen vom Gateway ✅
+
+### Auslöser
+Ein Nutzer meldete zwei Symptome: die Provider-Dropdowns an Target und Fallback laden nicht die in
+Bifrost konfigurierten Provider, und ein „Fetch models" im Provider-Tab ordnet Modelle falschen
+Providern zu. Dazu kamen rund 17 Regeln mit dem Hinweis *„steht nicht im Modell-Katalog"*, obwohl
+der Push durchging.
+
+### Was wirklich kaputt war
+- **Der Katalog kam nie vom Gateway.** `openApiSession` setzt `providers: []`, und `fetchModels()`
+  fiel ohne `activeDb` auf `builtInCatalog()` zurück — 12 fest verdrahtete Vendor-Modelle in
+  `src/lib/models.ts`. `vercel`, `ocgoo`, `NaraRouter`, `oczen`, `opencode-zen` fehlten dort alle.
+  Jeder echte Gateway-Provider sah für `providerWarnings` unbekannt aus.
+- **`owned_by` ist nicht der Provider.** `ProviderManager` mappt `provider: m.owned_by ?? …`.
+  Bifrost führt `owned_by` als Hersteller-Metadatum (`core/schemas/models.go`, direkt neben
+  `architecture` und `pricing`). Aus `nvidianim/meta/llama2-70b` wurde so `meta` — jeder Klick auf
+  „Fetch models" verteilte den Katalog auf die Hersteller statt auf die Konfigurationen.
+- **Die Provider-Liste für den Rückschluss kannte den Katalog nicht.** Sie stand dreimal im
+  InspectorPanel kopiert, und die Fassung in `FallbackEditor` zählte nur `providers`, nie
+  `modelCatalog` — im API-Modus also eine leere Liste.
+
+### Änderungen
+- [x] `modelRefs.ts`: `splitModelId` (trennt am **ersten** `/`, Vendor-Präfixe bleiben im Modell),
+      `mapGatewayModels` (explizites `provider`-Feld, sonst das erste Id-Segment — **`owned_by`
+      wird nie gelesen**), `providerOptions` (eine Liste statt drei Kopien).
+- [x] `bifrostApi.ts`: `plainRequest` für Pfade ohne Versionspräfix, `listModels` (folgt `total`),
+      `listProviders`, `listProviderKeys`. Neue Typen `ApiModel`, `ApiProvider`, `ApiProviderKey`.
+- [x] `useStore`: `fetchModels` liest im API-Modus das Gateway, `fetchProviders` neu.
+      **Bei Fehler bleibt der Katalog leer** — `providerWarnings` schweigt dann, statt 12 Modelle
+      gegen echte Provider zu halten. Im File-Modus bleibt die DB die Quelle.
+- [x] Bridge: Whitelist um `/api/models`, `/api/providers`, `/api/providers/{p}/keys` erweitert —
+      Read-only, liefert Namen, Key-IDs und redacted Values, kein Schlüsselmaterial.
+
+### Zwei Bugs, die die neuen Tests gefunden haben
+- **`/api/models` paginiert mit `limit` 5 als Default.** Ein Client, der eine Seite liest, glaubt
+  einen vollständigen Katalog zu haben und verliert alles ab dem sechsten Modell. `listModels`
+  folgt jetzt `total` und springt um die tatsächlich empfangene Zeilenzahl weiter — sonst
+  überspringt er Zeilen, sobald das Gateway eine kurze Seite liefert, und läuft in eine Endlosschleife,
+  wenn es `limit` ignoriert.
+- **Die Bridge hat den Query-String verworfen** (nur `url.pathname`). Jede paginierte Anfrage bekam
+  Seite eins zurück, wieder und wieder — als vollständiger Katalog aussehend, weil `total` stimmte.
+- **`mapGatewayModels` hätte bei deklariertem Provider den Vendor-Präfix weggecut.** Der erste
+  Entwurf splittete die Id immer; bei `{name: "meta/llama2-70b", provider: "nvidianim"}` ergab das
+  `nvidianim/llama2-70b` statt `nvidianim/meta/llama2-70b`.
+
+### Validierung
+- `npm run typecheck`, `npm run build` clean.
+- Vitest: **115 Tests in 15 Dateien**, grün (vorher 95 in 14).
+- `gateway-smoke`: **31/31** (vorher 28). Der Mock hat die beiden Fallen eingebaut, die den echten
+  Bug ausgelöst haben — ein Modell mit `owned_by: "meta"` und eine Fünf-Zeilen-Seite. Der
+  Query-String-Bug der Bridge fiel genau deshalb auf.

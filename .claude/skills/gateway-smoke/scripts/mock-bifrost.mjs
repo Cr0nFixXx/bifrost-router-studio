@@ -9,10 +9,17 @@
  *   POST   /api/routing/rules                  +  /api/governance/routing-rules
  *   PUT    /api/routing/rules/{id}             +  /api/governance/routing-rules/{id}
  *   DELETE /api/routing/rules/{id}             +  /api/governance/routing-rules/{id}
+ *   GET    /api/models, /api/providers, /api/providers/{p}/keys
  *
  * Both prefixes serve the same store, so the version fork is observable without
  * losing state. Note the suffix differs per prefix: the legacy route is
  * `/api/governance/routing-rules`, NOT `/api/governance/rules`.
+ *
+ * The catalog routes carry the trap this mock exists for: `owned_by` is model
+ * *vendor* metadata, not the provider config name, so `nvidianim/meta/llama2-70b`
+ * arrives with `owned_by: "meta"` and a provider of `nvidianim`. `/api/models`
+ * also defaults to five rows per page, so a client that reads one page and stops
+ * silently loses everything past the fifth model.
  *
  * It reproduces the behaviours that actually broke things in practice:
  *   - `PUT` replaces the whole rule (targets included), it does not merge
@@ -140,6 +147,31 @@ async function handleItem(req, res, id) {
   return send(res, 405, { error: { message: `method not allowed: ${req.method}` } });
 }
 
+/** Configured providers and their models, in the shapes the real handlers return. */
+const PROVIDERS = [
+  { name: 'vercel', provider_status: 'active' },
+  { name: 'nvidianim', provider_status: 'active' },
+  { name: 'ocgoo', provider_status: 'active' },
+  { name: 'dormant', provider_status: 'error' },
+];
+
+const MODELS = [
+  { name: 'anthropic/claude-sonnet-4.6', provider: 'vercel', owned_by: 'anthropic' },
+  { name: 'anthropic/claude-opus-4.1', provider: 'vercel', owned_by: 'anthropic' },
+  // The one that exposed the bug: vendor `meta`, provider `nvidianim`.
+  { name: 'meta/llama2-70b', provider: 'nvidianim', owned_by: 'meta' },
+  { name: 'meta/llama3-8b', provider: 'nvidianim', owned_by: 'meta' },
+  { name: 'ocgo-o', provider: 'ocgoo' },
+  { name: 'ocgo-r', provider: 'ocgoo' },
+];
+
+const KEYS = {
+  vercel: [{ id: 'vk-1', name: 'prod', value: '***', weight: 1, models: ['anthropic/claude-sonnet-4.6'] }],
+  nvidianim: [{ id: 'nk-1', name: 'nim', value: '***', weight: 1, models: [] }],
+  ocgoo: [{ id: 'ok-1', name: 'default', value: '***', weight: 1, models: [] }],
+  dormant: [],
+};
+
 const server = http.createServer(async (req, res) => {
   const path = new URL(req.url ?? '/', 'http://localhost').pathname;
 
@@ -148,6 +180,23 @@ const server = http.createServer(async (req, res) => {
 
   if (req.headers.authorization !== `Bearer ${TOKEN}`) {
     return send(res, 401, { error: { message: 'unauthorized', code: 401 } });
+  }
+
+  if (path === '/api/providers') return send(res, 200, { providers: PROVIDERS, total: PROVIDERS.length });
+
+  const providerKeys = path.match(/^\/api\/providers\/([^/]+)\/keys$/);
+  if (providerKeys) {
+    const keys = KEYS[decodeURIComponent(providerKeys[1])];
+    if (!keys) return send(res, 404, { error: { message: 'provider not found' } });
+    return send(res, 200, { keys, total: keys.length });
+  }
+
+  if (path === '/api/models') {
+    const query = new URL(req.url ?? '/', 'http://localhost').searchParams;
+    const offset = Number(query.get('offset') ?? 0);
+    // Real default is 5 — a client that stops after one page sees a truncated catalog.
+    const limit = Number(query.get('limit') ?? 5);
+    return send(res, 200, { models: MODELS.slice(offset, offset + limit), total: MODELS.length });
   }
 
   const COLLECTIONS = ['/api/routing/rules', '/api/governance/routing-rules'];

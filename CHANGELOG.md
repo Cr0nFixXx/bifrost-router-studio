@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.9 — Build 26100722
+
+- **The target and fallback dropdowns load your actual providers.** In gateway mode the studio ran
+  off a hardcoded list of twelve vendor models, so `vercel`, `ocgoo`, `NaraRouter` and friends were
+  missing from the provider fields. They now come from the gateway, together with each provider's
+  keys for the expert mode.
+- **"Fetch models" no longer moves models to the wrong provider.** It read `owned_by` as the
+  provider, but that field is the model *vendor* — so `nvidianim/meta/llama2-70b` landed under
+  `meta`. The first segment of a model id is the provider, and vendor prefixes like
+  `EdenAI/cloudflare/@cf/meta-llama/…` stay part of the model.
+- **The "not in the model catalog" warnings stop firing for providers that exist.** Those warnings
+  compared your rules against a twelve-entry built-in list, so every real gateway provider read as
+  unknown before each push. If the gateway cannot be reached for the catalog, the studio now stays
+  quiet instead of guessing.
+
 ## 0.2.9 — Build 26100715
 
 - **One bad rule no longer blocks the rest of the sync.** A rule the gateway refused used to abort

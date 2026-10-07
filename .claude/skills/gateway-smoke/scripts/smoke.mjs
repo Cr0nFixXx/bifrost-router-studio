@@ -298,6 +298,33 @@ check('Bridge-Whitelist lehnt /api/config mit 403 ab', () => {
   eq(whitelist.status, 403, 'HTTP-Status');
 });
 
+// --- Katalog ---------------------------------------------------------------
+// The dropdowns used to run off a 12-entry built-in list while `providers` was
+// empty in API mode, so every real gateway provider looked unknown. These checks
+// run the real client against the mock's catalog, including the two traps the
+// mock plants: `owned_by` naming the vendor rather than the provider, and a
+// five-row default page that silently truncates the catalog.
+const catalogModels = await api.listModels();
+check('listModels liest den kompletten Katalog über alle Seiten', () => {
+  eq(catalogModels.length, 6, 'Anzahl der Modelle');
+});
+
+check('listModels hält jedes Modell bei seinem Provider', () => {
+  const nim = catalogModels.find((m) => m.model === 'meta/llama2-70b');
+  assert(nim, 'meta/llama2-70b fehlt im Katalog');
+  eq(nim.provider, 'nvidianim', 'Provider');
+  eq(nim.id, 'nvidianim/meta/llama2-70b', 'Katalog-ID');
+});
+
+const catalogProviders = await api.listProviders();
+check('listProviders liefert die konfigurierten Provider samt Keys', () => {
+  eq(catalogProviders.length, 4, 'Anzahl der Provider');
+  const vercel = catalogProviders.find((p) => p.id === 'vercel');
+  assert(vercel, 'vercel fehlt');
+  eq(vercel.supported, true, 'provider_status');
+  eq(vercel.keys[0]?.key_id, 'vk-1', 'Key-ID');
+});
+
 // --- Token aus dem Browser --------------------------------------------------
 // The bridge used to read its token from the env only and overwrote whatever the
 // client sent, so a token typed on the Connect screen was dropped silently. Now a

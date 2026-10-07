@@ -1,6 +1,6 @@
 ---
 name: gateway-smoke
-description: "Verifiziert die API-Modus-Anbindung gegen ein echtes Round-Trip: startet ein Mock-Gateway plus die lokale Bridge und fährt 28 Checks durch. Nutze diesen Skill immer wenn an src/lib/bifrostApi.ts, src/lib/sync.ts, scripts/local-bridge.mjs oder am API-Connect etwas geändert wurde, oder wenn jemand fragt ob der Sync zum Gateway noch funktioniert, ob die Bridge noch durchlässt oder ob die API-Constraints noch gelten. Auch bei 'teste die API anbindung', 'smoke test gateway', 'läuft der sync noch'."
+description: "Verifiziert die API-Modus-Anbindung gegen ein echtes Round-Trip: startet ein Mock-Gateway plus die lokale Bridge und fährt 31 Checks durch. Nutze diesen Skill immer wenn an src/lib/bifrostApi.ts, src/lib/sync.ts, scripts/local-bridge.mjs oder am API-Connect etwas geändert wurde, oder wenn jemand fragt ob der Sync zum Gateway noch funktioniert, ob die Bridge noch durchlässt oder ob die API-Constraints noch gelten. Auch bei 'teste die API anbindung', 'smoke test gateway', 'läuft der sync noch'."
 ---
 
 # Gateway-Smoketest
@@ -15,6 +15,9 @@ Sechs Eigenschaften der Bifrost-Management-API fallen durch **weder `tsc` noch V
 - unveränderte Regeln dürfen **keinen** Request erzeugen
 - ein rein serverseitiges Feld darf keinen Push auslösen
 - die Bridge ist eine Whitelist und lehnt alles andere mit 403 ab
+- `GET /api/models` paginiert mit `limit` 5 als Default — wer eine Seite liest, hat nicht den Katalog
+- die Bridge muss den Query-String durchreichen, sonst liefert jede Seite eins denselben First Page
+- `owned_by` ist Hersteller-Metadatum, nicht der Provider; der Provider ist das erste Id-Segment
 
 Keine davon ist ein Tippfehler. Jede einzelne hat schon zu stiller Fehlfunktion geführt: eine
 veraltete Kopie der Constraints im `CHANGELOG.md` hätte beim Push Regeln zerstört, ein

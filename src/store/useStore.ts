@@ -285,6 +285,8 @@ interface StudioState {
 
   /* data actions */
   fetchModels: () => void;
+  /** No-op in file mode (providers come from the DB); reads the gateway in API mode. */
+  fetchProviders: () => void;
   upsertProvider: (provider: ProviderConfig) => Promise<void>;
   reorderRulePriority: (ruleId: string, direction: 'up' | 'down') => void;
 
@@ -363,6 +365,7 @@ async function openApiSession(transport: ApiTransport, label: string): Promise<v
       syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [], failures: [] },
       syncFailuresOpen: false,
     });
+    useStore.getState().fetchProviders();
     useStore.getState().fetchModels();
     useStore.getState().recompute();
   } catch (err) {
@@ -1158,11 +1161,27 @@ export const useStore = create<StudioState>((set, get) => ({
   /* ---------------------------- data ------------------------------- */
   fetchModels: () => {
     if (!activeDb) {
-      set({ modelCatalog: builtInCatalog() });
+      // API mode: the gateway is the only thing that knows which providers and
+      // models actually exist. A failure leaves the catalog empty rather than
+      // seeding the built-in list — `providerWarnings` treats an empty catalog
+      // as "nothing known" and stays quiet, whereas 12 hardcoded vendor models
+      // mark every real gateway provider as unknown before every push.
+      if (!activeApi) {
+        set({ modelCatalog: builtInCatalog() });
+        return;
+      }
+      void activeApi.listModels().then((m) => set({ modelCatalog: m })).catch(() => set({ modelCatalog: [] }));
       return;
     }
     const m = activeDb.listModels();
     set({ modelCatalog: m.length ? m : builtInCatalog() });
+  },
+  fetchProviders: () => {
+    // File mode already fills `providers` from the DB; only the gateway can add them here.
+    // Gated on the connection source, not just on `activeApi`: opening a file does not
+    // clear the old client, so a stale handle would otherwise overwrite the DB's providers.
+    if (!activeApi || get().connectionSource !== 'api') return;
+    void activeApi.listProviders().then((p) => set({ providers: p })).catch(() => set({ providers: [] }));
   },
   setModelCatalog: (modelCatalog) => set({ modelCatalog }),
   upsertProvider: async (provider) => {

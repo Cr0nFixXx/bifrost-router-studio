@@ -13,15 +13,20 @@
  * `toWriteShape` is the only sanctioned conversion.
  */
 import type {
+  ApiModel,
+  ApiProvider,
+  ApiProviderKey,
   ApiRule,
   ApiRuleCreate,
   ApiRuleUpdate,
   ApiTarget,
+  ProviderConfig,
   RoutingFallback,
   RoutingRule,
   RoutingTarget,
 } from '@/types/bifrost';
 import { celToBifrostQueryObject } from '@/lib/bifrostQuery';
+import { mapGatewayModels, type CatalogEntry } from '@/lib/modelRefs';
 
 /** Normalized failure so the UI can tell 401 from 404 from "bridge is down". */
 export class BifrostApiError extends Error {
@@ -211,6 +216,23 @@ export class BifrostApi {
     return `${candidate.prefix}${path}`;
   }
 
+  /**
+   * A path that carries no version prefix. `request()` would rewrite it into
+   * `/api/routing/…`, which is why `/api/models` and `/api/providers` go
+   * straight at the transport. Under the bridge that becomes
+   * `/api/bifrost/api/models`, and the bridge strips its own prefix again.
+   */
+  private async plainRequest<T>(path: string): Promise<T> {
+    let res: Response;
+    try {
+      res = await fetch(this.transport.url(path), { headers: authHeaders(this.transport.token) });
+    } catch (err) {
+      throw new BifrostApiError((err as Error).message || 'Bifrost ist nicht erreichbar', 0);
+    }
+    if (!res.ok) throw await readError(res);
+    return (await res.json()) as T;
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const last: BifrostApiError[] = [];
     const candidates = this.prefix ? [this.prefix] : this.transport.prefixes;
@@ -266,6 +288,64 @@ export class BifrostApi {
   }
 
   /**
+   * Models the gateway actually has, as catalog entries.
+   *
+   * `GET /api/models` pages: the handler defaults `limit` to **5**, so a naive
+   * call returns five models and looks like a complete answer. `total` comes
+   * back with every page, so the loop below is the only way to see the rest.
+   * ponytail: fixed page size — only parameterize if a deployment ever has
+   * more models than this and the dropdown is visibly short.
+   */
+  async listModels(): Promise<CatalogEntry[]> {
+    const pageSize = 500;
+    const out: CatalogEntry[] = [];
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+    while (offset < total) {
+      const page = await this.plainRequest<{ models?: ApiModel[]; total?: number }>(
+        `/api/models?limit=${pageSize}&offset=${offset}`,
+      );
+      const rows = page.models ?? [];
+      out.push(...mapGatewayModels(rows));
+      total = page.total ?? out.length;
+      // Advance by what the gateway actually sent. Stepping by `pageSize` instead
+      // skips rows whenever it returns a short page, and a gateway that ignores
+      // `limit` outright would then loop on the same page forever.
+      if (!rows.length) break;
+      offset += rows.length;
+    }
+    return out;
+  }
+
+  /** Configured providers plus their (redacted) keys, in the canvas provider shape. */
+  async listProviders(): Promise<ProviderConfig[]> {
+    const data = await this.plainRequest<{ providers?: ApiProvider[] }>('/api/providers');
+    const providers = data.providers ?? [];
+    return Promise.all(
+      providers.map(async (p): Promise<ProviderConfig> => ({
+        id: p.name,
+        // Bifrost names a provider after its config, and reports no separate
+        // vendor type on this route — the name is the only identifier it has.
+        type: p.name,
+        supported: p.provider_status === 'active',
+        mode: 'manage',
+        keys: await this.listProviderKeys(p.name),
+      })),
+    );
+  }
+
+  /** Key ids and model whitelists for one provider. Values arrive redacted. */
+  async listProviderKeys(provider: string): Promise<ProviderConfig['keys']> {
+    const data = await this.plainRequest<{ keys?: ApiProviderKey[] }>(`/api/providers/${encodeURIComponent(provider)}/keys`);
+    return (data.keys ?? []).map((k) => ({
+      value: typeof k.value === 'string' ? k.value : '',
+      key_id: k.id,
+      ...(k.weight !== undefined ? { weight: k.weight } : {}),
+      ...(Array.isArray(k.models) ? { models: k.models } : {}),
+    }));
+  }
+
+  /**
    * Version string of the gateway, e.g. `v2.3.1`.
    *
    * `/api/version` sits outside the version-prefix scheme and outside the
@@ -273,11 +353,7 @@ export class BifrostApi {
    * `request()`. Unused by app code today; kept for diagnostics.
    */
   async version(): Promise<string> {
-    const res = await fetch(this.transport.url('/api/version'), {
-      headers: authHeaders(this.transport.token),
-    });
-    if (!res.ok) throw await readError(res);
-    const data = (await res.json()) as { version?: string };
+    const data = await this.plainRequest<{ version?: string }>('/api/version');
     return data.version ?? '';
   }
 }

@@ -4,8 +4,11 @@ import {
   fallbackToParts,
   fallbackToRef,
   inferProviderFromModelValue,
+  mapGatewayModels,
   modelCandidates,
   modelValueForSelection,
+  providerOptions,
+  splitModelId,
   stripProviderPrefix,
 } from './modelRefs';
 
@@ -49,5 +52,36 @@ describe('modelRefs', () => {
   it('infers provider from provider/model values', () => {
     expect(inferProviderFromModelValue('vercel/anthropic/claude', ['openai', 'vercel'])).toBe('vercel');
     expect(inferProviderFromModelValue('anthropic/claude', ['openai', 'vercel'])).toBe(null);
+  });
+
+  it('splits at the first slash only — vendor prefixes stay in the model', () => {
+    expect(splitModelId('nvidianim/meta/llama2-70b')).toEqual({ provider: 'nvidianim', model: 'meta/llama2-70b' });
+    expect(splitModelId('EdenAI/cloudflare/@cf/meta-llama/llama-2-7b-chat-hf-lora')).toEqual({
+      provider: 'EdenAI',
+      model: 'cloudflare/@cf/meta-llama/llama-2-7b-chat-hf-lora',
+    });
+    expect(splitModelId('gpt-4o')).toEqual({ provider: '', model: 'gpt-4o' });
+  });
+
+  it('maps gateway models by provider, never by owned_by', () => {
+    const [entry] = mapGatewayModels([
+      { name: 'meta/llama2-70b', provider: 'nvidianim', owned_by: 'meta' } as { name: string; provider: string },
+    ]);
+    expect(entry).toEqual({ id: 'nvidianim/meta/llama2-70b', provider: 'nvidianim', model: 'meta/llama2-70b', label: 'meta/llama2-70b' });
+  });
+
+  it('falls back to the id prefix when a listing carries no provider field', () => {
+    expect(mapGatewayModels([{ id: 'ocgoo/ocgo-o' }])).toEqual([
+      { id: 'ocgoo/ocgo-o', provider: 'ocgoo', model: 'ocgo-o', label: 'ocgo-o' },
+    ]);
+  });
+
+  it('offers providers from config and catalog alike, deduplicated', () => {
+    const ids = providerOptions(
+      [{ id: 'openai', type: 'azure' }],
+      [{ provider: 'vercel' }, { provider: 'openai' }],
+      'my-local-alias',
+    );
+    expect(ids).toEqual(['openai', 'azure', 'vercel', 'my-local-alias']);
   });
 });

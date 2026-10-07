@@ -50,13 +50,29 @@ function requestToken(req) {
  * The only gateway paths this bridge will forward. A generic `/api/*` proxy
  * would let the token in this process reach `/api/config` or `/api/api-keys`,
  * which is far more than rule syncing needs.
+ *
+ * `/api/models`, `/api/providers` and `/api/providers/{p}/keys` are the one
+ * deliberate addition: the studio needs the gateway's real provider and model
+ * names for its target/fallback dropdowns, and a 12-entry built-in list is not
+ * a substitute. All three are read-only and return names, key ids and redacted
+ * values — no secret material, which is what keeps them out of the "far more
+ * than we need" bucket with `/api/config`.
  */
-const BIFROST_ROUTES = new Set(['/api/version', '/api/health', '/api/routing/rules', '/api/governance/routing-rules']);
+const BIFROST_ROUTES = new Set([
+  '/api/version',
+  '/api/health',
+  '/api/routing/rules',
+  '/api/governance/routing-rules',
+  '/api/models',
+  '/api/providers',
+]);
 
 function isAllowedBifrostPath(pathname) {
   if (BIFROST_ROUTES.has(pathname)) return true;
   // /api/routing/rules/{id} and /api/governance/routing-rules/{id}
-  return /^\/api\/(routing\/rules|governance\/routing-rules)\/[^/]+$/.test(pathname);
+  if (/^\/api\/(routing\/rules|governance\/routing-rules)\/[^/]+$/.test(pathname)) return true;
+  // /api/providers/{provider} and /api/providers/{provider}/keys
+  return /^\/api\/providers\/[^/]+(\/keys)?$/.test(pathname);
 }
 
 async function bifrostFetch(pathname, { method = 'GET', body, token } = {}) {
@@ -152,7 +168,10 @@ const server = http.createServer(async (req, res) => {
         for await (const chunk of req) chunks.push(chunk);
         body = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined;
       }
-      const out = await bifrostFetch(target, { method: req.method, body, token });
+      // The query string travels too. Dropping it made every paged call answer
+      // with page one, which `/api/models?limit=…&offset=…` turned into an
+      // endlessly repeated first page rather than an error.
+      const out = await bifrostFetch(target + (url.search || ''), { method: req.method, body, token });
       return send(res, out.status, out.text);
     }
     if (url.pathname === '/api/list') {

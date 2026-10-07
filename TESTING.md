@@ -14,17 +14,18 @@ npm run build      # tsc --noEmit + vite build
 
 ## Test-Landkarte
 
-95 Tests in 14 Dateien.
+115 Tests in 15 Dateien.
 
 | Testdatei | Tests | Deckt ab |
 | --- | --- | --- |
 | `sync.test.ts` | 17 | `sync.ts` Diff/Apply, `bifrostApi.ts` Konverter, Fehlernormalisierung |
+| `bifrostApi.test.ts` | 5 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination, `/api/providers`-Shape |
 | `cel.test.ts` | 11 | Parser/Compiler, Visual↔CEL Round-Trip |
 | `bifrostMapper.test.ts` | 9 | Graph ⇄ Rules, `rulesToWorkflow` Hydration |
 | `validation.test.ts` | 9 | Diagnostics (Gewichte, Zyklen, CEL, Scopes) |
 | `gatewayExport.test.ts` | 8 | LiteLLM-YAML, OpenAI-Model-Groups |
 | `diff.test.ts` | 6 | Canvas-vs-DB-Diff |
-| `modelRefs.test.ts` | 6 | `provider/model`-Helfer, Fallback-Parts |
+| `modelRefs.test.ts` | 11 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
 | `ruleOrder.test.ts` | 5 | Priority-Reorder innerhalb einer Scope-Gruppe |
 | `aiDraft.test.ts` | 4 | AI-Draft-Normalisierung und -Validierung |
 | `bifrostQuery.test.ts` | 3 | CEL → react-querybuilder JSON |
@@ -41,7 +42,7 @@ hier mit, sonst driftet die Summe.
 Eine Änderung ist fertig, wenn:
 
 1. `npm run typecheck` clean ist (keine `any` in `src/types/*`).
-2. `npm test` grün ist — **95 Tests, 14 Dateien**, keine Auslassungen.
+2. `npm test` grün ist — **115 Tests, 15 Dateien**, keine Auslassungen.
 3. `npm run build` durchläuft.
 4. Für Code, der Routing-Regeln berührt: der Visual↔CEL-Round-Trip hält, und Gewichte summieren
    weiter auf `1`.
@@ -53,8 +54,13 @@ BFRS_BIFROST_URL=http://localhost:8080 BFRS_BIFROST_TOKEN=<key> npm run bridge
 
 curl -s localhost:8787/api/health                                  # bifrost.authOk: true
 curl -s localhost:8787/api/bifrost/api/routing/rules               # Regel-Liste
+curl -s localhost:8787/api/bifrost/api/models                      # Modellkatalog mit provider je Modell
+curl -s localhost:8787/api/bifrost/api/providers                   # konfigurierte Provider
 curl -s -w '%{http_code}' localhost:8787/api/bifrost/api/config     # 403 — Whitelist hält
 ```
+
+Die Bridge muss den Query-String mitgeben — `/api/models?limit=…&offset=…` ohne ihn liefert
+unendlich oft Seite eins statt eines Fehlers.
 
 Dazu End-to-End: Connect hydriert den Canvas, eine Änderung erzeugt genau einen PUT, eine
 unveränderte Regel **keinen** Request, ein Scope-Wechsel ergibt DELETE + POST statt PUT, und

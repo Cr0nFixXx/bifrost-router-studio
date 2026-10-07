@@ -29,6 +29,7 @@ import {
   fallbackToParts,
   inferProviderFromModelValue,
   modelCandidates,
+  providerOptions,
   stripProviderPrefix,
 } from '@/lib/modelRefs';
 import {
@@ -640,7 +641,10 @@ function FallbackEditor({ node }: { node: any }) {
         </div>
         {fallbacks.map((fb: RoutingFallback, i: number) => {
           const { provider: prov, model, key_id } = fallbackToParts(fb);
-          const providerIds = Array.from(new Set([...(providers?.map((p: any) => p.id) ?? []), ...(providers?.map((p: any) => p.type).filter(Boolean) ?? [])]));
+          // Must include the catalog: in API mode `providers` is empty until the
+          // gateway answers, and without the catalog the provider back-fill below
+          // can never match anything.
+          const providerIds = providerOptions(providers ?? [], catalog ?? []);
           const updateFb = (patch: { provider?: string; model?: string; key_id?: string }) => {
             const inferred = (patch.provider ?? prov) || inferProviderFromModelValue(patch.model ?? model ?? '', providerIds) || '';
             const cleanModel = stripProviderPrefix(patch.model ?? model ?? '', inferred);
@@ -664,12 +668,7 @@ function FallbackEditor({ node }: { node: any }) {
 
 
 function ProviderDropdown({ value, onChange, providers, catalog, current }: any) {
-  const providerIds = Array.from(new Set([
-    ...(providers?.map((p: any) => p.id) ?? []),
-    ...(providers?.map((p: any) => p.type).filter(Boolean) ?? []),
-    ...(catalog?.map((m: any) => m.provider).filter(Boolean) ?? []),
-    current?.providerId,
-  ].filter(Boolean)));
+  const providerIds = providerOptions(providers ?? [], catalog ?? [], current?.providerId);
   const listId = `providers-${current?.kind ?? 'node'}-${String(current?.providerId ?? 'all').replace(/[^A-Za-z0-9_-]/g, '_')}`;
   return (
     <>
@@ -715,12 +714,7 @@ function KeyDropdown({ value, onChange, providers, providerId }: any) {
 }
 
 function ProviderSelect({ value, onChange, providers, catalog, current }: any) {
-  const providerIds = Array.from(new Set([
-    ...(providers?.map((p: any) => p.id) ?? []),
-    ...(providers?.map((p: any) => p.type).filter(Boolean) ?? []),
-    ...(catalog?.map((m: any) => m.provider).filter(Boolean) ?? []),
-    current?.providerId,
-  ].filter(Boolean)));
+  const providerIds = providerOptions(providers ?? [], catalog ?? [], current?.providerId);
   const listId = `providers-${current?.kind ?? 'node'}`;
   return (
     <>

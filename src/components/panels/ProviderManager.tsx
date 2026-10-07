@@ -8,11 +8,13 @@ import { Server, Boxes, Plus, RefreshCw, Check } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Button, EmptyState, Chip, IconButton } from '@/components/ui/primitives';
 import { useUserSettings } from '@/store/useUserSettings';
+import { mapGatewayModels } from '@/lib/modelRefs';
 
 export function ProviderManager() {
   const providers = useStore((s) => s.providers);
   const catalog = useStore((s) => s.modelCatalog);
   const fetchModels = useStore((s) => s.fetchModels);
+  const fetchProviders = useStore((s) => s.fetchProviders);
   const setModelCatalog = useStore((s) => s.setModelCatalog);
   const modelApiUrl = useUserSettings((s) => s.modelApiUrl);
   const modelApiKey = useUserSettings((s) => s.modelApiKey);
@@ -23,7 +25,10 @@ export function ProviderManager() {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (catalog.length === 0) fetchModels();
+    if (catalog.length === 0) {
+      fetchModels();
+      fetchProviders();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -41,12 +46,11 @@ export function ProviderManager() {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const json = await res.json();
       const arr = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
-      const mapped = arr.map((m: any) => ({
-        id: String(m.id ?? m.name ?? m.model ?? 'unknown'),
-        label: String(m.id ?? m.name ?? m.model ?? 'unknown'),
-        model: String(m.id ?? m.name ?? m.model ?? 'unknown'),
-        provider: m.owned_by ?? m.provider ?? 'external',
-      }));
+      // `mapGatewayModels` reads the provider off the id's first segment (or an
+      // explicit `provider` field). The old mapping took `owned_by`, which is
+      // the model vendor — that moved every model to `meta` instead of `nvidianim`.
+      const mapped = mapGatewayModels(arr);
+      if (!mapped.length) throw new Error('Keine Modelle in der Antwort gefunden.');
       setModelCatalog(mapped);
     } catch (err) {
       setFetchError((err as Error).message);
@@ -69,7 +73,7 @@ export function ProviderManager() {
           <div className="text-sm font-semibold text-ink">Providers & Models</div>
         </div>
         <div className="flex gap-1.5">
-          <IconButton label="Refresh models" onClick={() => fetchModels()}>
+          <IconButton label="Refresh models" onClick={() => { fetchProviders(); fetchModels(); }}>
             <RefreshCw size={15} />
           </IconButton>
           <Button size="sm" variant="outline" onClick={() => setAdding((a) => !a)}>

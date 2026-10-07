@@ -32,11 +32,11 @@
 
 - **Kein Inference-Proxy** — by design. Das Werkzeug plant und editiert Konfiguration; es leitet
   keinen Traffic.
-- **Modellkatalog im API-Modus ist statisch** — `fetchModels` fällt ohne `activeDb` auf
-  `builtInCatalog()` zurück, eine Liste im Repo statt der des Gateways. Die Provider-Hinweise vor
-  dem Push sind deshalb ein Hinweis und kein Befund: ein Provider, den das Gateway kennt, aber der
-  Repo-Katalog nicht, wird als unbekannt gemeldet. Saubere Lösung wäre, die Modelliste vom Gateway
-  zu holen. Blockiert es nicht — der Gateway-Fehlertext ist die vollständige Begründung.
+- **Modellkatalog im API-Modus kommt jetzt vom Gateway** — `fetchModels` liest `GET /api/models`,
+  `fetchProviders` liest `GET /api/providers` samt Keys. Bleibt als Rest: ein Provider ohne Keys hat
+  auch keine Modelle und taucht deshalb in keiner der beiden Listen auf. Er fällt in
+  `providerWarnings` weiter als unbekannt durch, obwohl das Gateway ihn kennt — der Hinweis ist
+  also keine lokale Ersatzliste mehr, aber weiterhin kein Befund.
 - **Simulation ist ein Mock** — CEL läuft gegen einen festen synthetischen Request-Kontext mit
   randomisierten Ergebnissen. Sie zeigt den Pfad, keine Live-Kapazität.
 - **Browser-Sreibmodell** — im File-Modus schreibt „Save" in die In-Memory-DB plus den

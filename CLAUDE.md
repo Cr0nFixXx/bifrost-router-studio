@@ -134,7 +134,20 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
   passes, because a mock that 404s the collection happily accepts a wrong path too.
   `gateway-smoke` covers it by *writing* through the legacy prefix.
 - `/api/version` sits outside the version-prefix scheme and outside the bridge's rules whitelist.
-  Address it directly; do not route it through `request()`.
+  Address it directly; do not route it through `request()`. The same holds for the catalog reads
+  `/api/models`, `/api/providers` and `/api/providers/{p}/keys` — `request()` would rewrite them to
+  `/api/routing/api/models`. They go through `plainRequest()`, which uses the transport directly.
+- **`/api/models` pages at five rows by default.** The handler defaults `limit` to 5 and returns
+  `total` alongside, so a client that reads one page and stops shows a catalog that looks complete
+  and is missing everything past the fifth model. `listModels()` follows `total`; a gateway that
+  ignores `limit` entirely is handled by advancing by the rows actually received.
+- **The first path segment of a model id is the provider**, always — `nvidianim/meta/llama2-70b`
+  is provider `nvidianim` with vendor prefix `meta` in the model, and extra prefixes are normal
+  (`EdenAI/cloudflare/@cf/meta-llama/…`). `owned_by` in a gateway model row is **vendor metadata**
+  (`core/schemas/models.go`), never the provider; using it moves every model off the config it
+  belongs to. `mapGatewayModels` reads the explicit `provider` field, else the id's first segment.
+- **The bridge must forward the query string.** It used to pass only `url.pathname`, which made
+  every paged call answer with page one — an endlessly repeated first page rather than an error.
 
 **Bridge (`scripts/local-bridge.mjs`)**
 - The management token has two sources and **the request wins over the environment**
@@ -161,6 +174,10 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
 - The whitelist matches the path **including** `/api`. The client sends `/api/bifrost` + `/api/routing`
   + `/rules`; matching `/routing/rules` alone rejects everything with a 403 that looks like a routing
   problem.
+- The whitelist covers the read-only catalog routes `/api/models`, `/api/providers` and
+  `/api/providers/{p}/keys`, because the studio has no other source for the gateway's real provider
+  and model names. They return names, key ids and redacted values — no key material — which is what
+  keeps them out of the same bucket as `/api/config` and `/api/api-keys`.
 - Forward the request body **verbatim**. It is already text; `JSON.stringify`-ing it again delivers a
   string to the gateway instead of a rule object.
 - The bridge is a whitelist proxy by design. Do not "just forward `/api/*`" — that would put the

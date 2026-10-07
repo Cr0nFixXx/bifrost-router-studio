@@ -84,17 +84,63 @@ To explicitly allow arbitrary absolute paths outside `BFRS_LOCAL_ROOT`:
 BFRS_ALLOW_ABSOLUTE=1 npm run bridge
 ```
 
+### Reaching the bridge from another machine
+
+The bridge binds to `127.0.0.1` by default, so a browser on a different computer cannot open
+`http://localhost:8787` — that address means *its own* PC, which is why the request fails with a
+network error rather than a clear message. This applies when the app itself is served from another
+host and you reach it by IP (`http://server-ip:5173`).
+
+Use the Vite dev server as a same-origin proxy instead. It forwards `/bridge/*` to the bridge and
+rewrites the prefix away, so no extra port has to be opened in the firewall and the bridge stays on
+loopback:
+
+```
+http://<server-ip>:5173/bridge
+```
+
+The Connect screen defaults to this URL automatically. Restart `npm run dev` after changing
+`vite.config.ts` — the proxy is only picked up on start.
+
+### Optional: HTTPS for the dev server
+
+Worth turning on whenever you enter the management token in the browser, because that token is sent
+to the dev server in cleartext over HTTP. Generate a certificate for your machine (`mkcert`, or
+`openssl` if you prefer) and point the dev server at it:
+
+```bash
+BFRS_TLS_KEY=./certs/dev-key.pem BFRS_TLS_CERT=./certs/dev-cert.pem npm run dev
+```
+
+Then open `https://<server-ip>:5173` instead. Both variables are required; with either missing the
+server stays on plain HTTP, so nothing about the default setup changes. Certificates are yours —
+keep them out of the repository.
+
+Keep the bridge URL on its default `<origin>/bridge` when HTTPS is on. Browsers block `fetch()` from
+an `https://` page to an `http://` one, so a hand-typed `http://localhost:8787` fails silently.
+
 ## Live gateway mode
 
 Instead of a database file, the Connect screen can talk to a **running Bifrost instance** through its
 management API (`/api/routing/rules`). In this mode the canvas is hydrated from the gateway and
 your edits are written back to it — no file export, no restart.
 
-The management token is held by the local bridge, never by the browser:
+The management token can be supplied two ways. Either set it on the bridge:
 
 ```bash
 BFRS_BIFROST_URL=http://localhost:8080 BFRS_BIFROST_TOKEN=<management-key> npm run bridge
 ```
+
+…or paste it into the **Management-Token** field on the Connect screen, next to the bridge URL.
+A token entered there wins over the bridge's own, and is held only for the session — it is never
+written to local storage. Leave the field empty and the bridge falls back to its environment token.
+
+Either way the request still goes *through* the bridge, which forwards nothing but
+`/api/routing/rules`. That is the difference from **Direkt verbinden** below, where the browser
+holds a credential the gateway accepts everywhere.
+
+Since the browser can now hold the token, it crosses the network once — in cleartext unless the dev
+server runs over HTTPS.
 
 Then pick **Laufende Instanz** on the Connect screen and use **Mit Bridge verbinden**. The Connect
 screen checks the gateway up front and tells you whether it is unreachable or the token is wrong,

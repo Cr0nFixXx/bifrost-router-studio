@@ -1,6 +1,6 @@
 ---
 name: gateway-smoke
-description: "Verifiziert die API-Modus-Anbindung gegen ein echtes Round-Trip: startet ein Mock-Gateway plus die lokale Bridge und fährt 19 Checks durch. Nutze diesen Skill immer wenn an src/lib/bifrostApi.ts, src/lib/sync.ts, scripts/local-bridge.mjs oder am API-Connect etwas geändert wurde, oder wenn jemand fragt ob der Sync zum Gateway noch funktioniert, ob die Bridge noch durchlässt oder ob die API-Constraints noch gelten. Auch bei 'teste die API anbindung', 'smoke test gateway', 'läuft der sync noch'."
+description: "Verifiziert die API-Modus-Anbindung gegen ein echtes Round-Trip: startet ein Mock-Gateway plus die lokale Bridge und fährt 26 Checks durch. Nutze diesen Skill immer wenn an src/lib/bifrostApi.ts, src/lib/sync.ts, scripts/local-bridge.mjs oder am API-Connect etwas geändert wurde, oder wenn jemand fragt ob der Sync zum Gateway noch funktioniert, ob die Bridge noch durchlässt oder ob die API-Constraints noch gelten. Auch bei 'teste die API anbindung', 'smoke test gateway', 'läuft der sync noch'."
 ---
 
 # Gateway-Smoketest

@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.9 — Build 26100702 (Fortsetzung)
+
+- **Build tooling:** bumped `source-map-js` to 1.2.2, clearing a high-severity advisory. It was a
+  stale lockfile pin, not a needed override — `postcss` had allowed the patched version all along.
+  `npm audit` now reports 7 instead of 8. The remaining advisories are all transitive dev
+  dependencies of `tailwindcss@3`; none reach the browser bundle, and the Tailwind v4 migration that
+  would clear them is tracked in `MILESTONES.md`.
+
+## 0.2.9 — Build 26100702
+
+- **The management token can be entered on the Connect screen**, in the same card as the bridge URL,
+  instead of only being configurable as an environment variable on the server. A token typed there
+  wins over the bridge's own; the environment stays as the fallback, so nothing that works today
+  stops working. The token is held for the session only and is never written to local storage.
+  Requests still travel through the bridge, which forwards nothing but routing rules — so this does
+  not hand the browser a gateway-wide credential the way **Direkt verbinden** does.
+- **Optional HTTPS for the dev server**, off unless `BFRS_TLS_KEY` and `BFRS_TLS_CERT` are both set.
+  Worth enabling when you type the token in a browser, because it otherwise crosses the network in
+  cleartext. Read the mixed-content note in the README before turning it on.
+- The Connect screen's gateway health check is now debounced. It depends on two fields now, and a
+  40-character token fired a request per keystroke without this.
+
+## 0.2.9 — Build 26100701
+
+- **Fixed: the local bridge was unreachable from any machine but its own.** It binds to
+  `127.0.0.1`, so `localhost:8787` in a remote browser's address bar pointed at that browser's PC,
+  and the server's own IP never got an answer because nothing listened on the network interface.
+  Both produced the same opaque network error, which reads like a CORS problem and is not one.
+  The dev server now proxies `/bridge` through to the bridge, so the Connect screen works from
+  anywhere the app itself is reachable — no extra firewall port, and the bridge stays on loopback
+  so the management token never leaves the host. Verified end to end: health check passes through
+  the proxy, and the path whitelist still rejects everything outside the routing rules.
+
 ## 0.2.9 — Build 26100619
 
 - **Documentation audit (iteration 2 of the skill evaluation)** found nine incorrect statements in

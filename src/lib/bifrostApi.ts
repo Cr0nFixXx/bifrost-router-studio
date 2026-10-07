@@ -81,12 +81,18 @@ export function directTransport(baseUrl: string, token: string | null): ApiTrans
   };
 }
 
-/** Transport via scripts/local-bridge.mjs. The bridge holds the token. */
-export function bridgeTransport(bridgeUrl: string): ApiTransport {
+/**
+ * Transport via scripts/local-bridge.mjs. `token` is what the user typed on the
+ * Connect screen; pass null to fall back to the bridge's own environment token.
+ * Either way the request still goes through the bridge, which is the point: the
+ * gateway only ever sees the bridge's path whitelist, not a browser holding a
+ * management credential.
+ */
+export function bridgeTransport(bridgeUrl: string, token: string | null = null): ApiTransport {
   const base = bridgeUrl.replace(/\/$/, '');
   return {
     url: (path) => `${base}/api/bifrost${path}`,
-    token: null,
+    token,
     prefixes: PREFIXES,
   };
 }
@@ -293,8 +299,11 @@ export interface BridgeHealth {
   bifrost?: BridgeBifrostStatus;
 }
 
-export async function fetchBridgeHealth(bridgeUrl: string): Promise<BridgeHealth> {
-  const res = await fetch(`${bridgeUrl.replace(/\/$/, '')}/api/health`);
+export async function fetchBridgeHealth(bridgeUrl: string, token: string | null = null): Promise<BridgeHealth> {
+  // The token goes along even though /api/health answers without it: the bridge
+  // probes the gateway with it, and that probe is what turns the status line into
+  // "Token gültig" instead of a permanent "Token abgelehnt".
+  const res = await fetch(`${bridgeUrl.replace(/\/$/, '')}/api/health`, { headers: authHeaders(token) });
   if (!res.ok) throw await readError(res);
   return (await res.json()) as BridgeHealth;
 }

@@ -180,9 +180,11 @@ interface StudioState {
   apiLabel: string | null;
   syncStatus: SyncStatus;
 
-  connectApiViaBridge: (bridgeUrl: string) => Promise<void>;
+  /** `token` is optional: omit it (or pass an empty string) to use the bridge's
+   *  own environment token. It is never persisted. */
+  connectApiViaBridge: (bridgeUrl: string, token?: string) => Promise<void>;
   connectApiDirect: (baseUrl: string, token: string) => Promise<void>;
-  checkBridge: (bridgeUrl: string) => Promise<BridgeHealth>;
+  checkBridge: (bridgeUrl: string, token?: string) => Promise<BridgeHealth>;
   syncNow: () => Promise<void>;
   refreshFromApi: () => void;
 
@@ -540,9 +542,9 @@ export const useStore = create<StudioState>((set, get) => ({
 
   /* --------------------- live gateway (API mode) --------------------- */
 
-  checkBridge: async (bridgeUrl) => {
+  checkBridge: async (bridgeUrl, token) => {
     try {
-      return await fetchBridgeHealth(bridgeUrl);
+      return await fetchBridgeHealth(bridgeUrl, token?.trim() || null);
     } catch (err) {
       return {
         ok: false,
@@ -554,8 +556,8 @@ export const useStore = create<StudioState>((set, get) => ({
     }
   },
 
-  connectApiViaBridge: async (bridgeUrl) => {
-    const health = await get().checkBridge(bridgeUrl);
+  connectApiViaBridge: async (bridgeUrl, token) => {
+    const health = await get().checkBridge(bridgeUrl, token);
     const b = health.bifrost;
     if (!b) {
       set({ error: 'Die Bridge läuft, kennt aber keine Bifrost-URL. Setze BFRS_BIFROST_URL und starte sie neu.' });
@@ -566,10 +568,10 @@ export const useStore = create<StudioState>((set, get) => ({
       return;
     }
     if (!b.authOk) {
-      set({ error: 'Der Management-Token der Bridge wird von Bifrost abgelehnt. Prüfe BFRS_BIFROST_TOKEN.' });
+      set({ error: 'Der Management-Token wird von Bifrost abgelehnt. Prüfe das Token-Feld oben oder BFRS_BIFROST_TOKEN.' });
       return;
     }
-    await openApiSession(bridgeTransport(bridgeUrl), `Bridge ${bridgeUrl} → ${b.url}`);
+    await openApiSession(bridgeTransport(bridgeUrl, token?.trim() || null), `Bridge ${bridgeUrl} → ${b.url}`);
   },
 
   connectApiDirect: async (baseUrl, token) => {

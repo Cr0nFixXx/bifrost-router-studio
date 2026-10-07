@@ -19,7 +19,7 @@ Die App redet mit zwei möglichen Quellen. `connectionSource: 'file' | 'api'` in
 | Transport | keiner, alles im Browser | `fetch` → Bridge oder direkt |
 | Schreibpfad | `bifrostDb.replaceAllRules()` → Datei-Download | `POST`/`PUT`/`DELETE /api/routing/rules` |
 | Handle | `getDb()` | `getApi()` |
-| Extra | — | optionale Bridge hält den Management-Token |
+| Extra | — | optionale Bridge als Whitelist-Proxy zum Gateway |
 
 Beide Modi füllen dieselben Store-Felder (`rules`, `nodes`, `edges`), laufen durch denselben
 Mapper und erzeugen dieselben Diagnostics. Der Canvas unterscheidet die Modi nicht.
@@ -89,10 +89,12 @@ Die sechs API-Constraints, an denen man hier leicht Regeln zerstört, stehen als
   Pfade außerhalb des Roots brauchen `BFRS_ALLOW_ABSOLUTE=1`.
 - **Gateway-Proxy** (API-Modus) — ein **Whitelist**-Proxy, kein generischer `/api/*`-Forwarder.
   Durchgelassen werden nur `/api/version`, `/api/health`, `/api/routing/rules[/{id}]` und
-  `/api/governance/routing-rules[/{id}]`. Der Token wird injiziert aus `BFRS_BIFROST_URL` +
-  `BFRS_BIFROST_TOKEN` (oder `BFRS_BIFROST_USER`/`BFRS_BIFROST_PASSWORD`).
-  `GET /api/health` meldet Gateway-Erreichbarkeit, Version und Token-Gültigkeit, damit ein
-  fehlgeschlagener Connect sich selbst erklären kann.
+  `/api/governance/routing-rules[/{id}]`. Der Token kommt aus der `authorization`-Header des
+  Requests; fehlt sie, greift die Bridge auf `BFRS_BIFROST_URL` + `BFRS_BIFROST_TOKEN` (oder
+  `BFRS_BIFROST_USER`/`BFRS_BIFROST_PASSWORD`) zurück. Der Vorrang des Request-Tokens ist Absicht —
+  ein Eingabefeld, das nebenbei stillschweigend übergangen wird, ist schlimmer als keins.
+  `GET /api/health` nimmt denselben Token mit und meldet Gateway-Erreichbarkeit, Version und
+  Token-Gültigkeit, damit ein fehlgeschlagener Connect sich selbst erklären kann.
 
 ## Store-Verantwortlichkeiten
 
@@ -114,3 +116,30 @@ nur wenn Auto-Sync an ist.
 
 `getDb()` und `getApi()` sind **Modulvariablen, kein reaktiver State**: Sie umschließen einen
 WASM-Handle bzw. einen Fetch-Client. Nur ihre Daten liegen im Store gespiegelt.
+
+### Neben-Stores
+
+Neben `useStore` gibt es drei eigene Zustandsspeicher, alle clientseitig und keiner Teil der
+Canvas-Wahrheit:
+
+| Store | Inhalt | Persistenz |
+| --- | --- | --- |
+| `useUserSettings` (`src/store/useUserSettings.ts`) | Projekte, Visual-Tool-Elemente, Theme, `bifrostApiUrl`, Modell-API-Key | `localStorage`, Key `bfrs-user-settings-v1` |
+| `useAiAssistant` (`src/store/useAiAssistant.ts`) | AI-Chat, Entwürfe, Kontextoptionen, API-Key | `localStorage`, Key `bfrs-ai-assistant-v1`; der Key nur bei gesetztem `rememberApiKey` |
+| Canvas-Overlays | Annotationen und Visual-Tools | Canvas, nie in den Bifrost-Tabellen |
+
+**Keiner dieser Speicher führt den Gateway-Token.** Der Connect-Screen hält ihn im Component-State,
+damit ein Reload ihn verwirft — `useUserSettings` würde ihn in `localStorage` schreiben.
+
+## KI-Assistent
+
+Kein Teil des Canvas-Vertrags, aber ein eigener Pfad von der Prompt-Eingabe bis zum Diff:
+
+- `src/store/useAiAssistant.ts` — Einstellungen, Chat-State, OpenAI-kompatibler Aufruf, Kontextwahl.
+- `src/components/panels/AiAssistantPanel.tsx` — Chat-UI, Quick Prompts, Kontext-Toggles, Draft-Review.
+- `src/lib/aiDraft.ts` — Draft-Normalisierung, Validierung, Merge mit den Canvas-Rules.
+
+Entwürfe erreichen den Canvas **nie** automatisch: `applyDraftToCanvas()` läuft erst hinter einem
+Klick, und der Apply-Button ist deaktiviert, solange der normalisierte Draft Validierungsfehler hat
+([AiAssistantPanel.tsx:92-107,304](src/components/panels/AiAssistantPanel.tsx#L92-L107)). Der
+Vergleich nutzt denselben `DiffModal` wie der DB-Abgleich, nur mit eigener Überschrift.

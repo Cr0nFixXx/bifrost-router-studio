@@ -47,7 +47,16 @@ export function ConnectScreen() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localPath, setLocalPath] = useState('');
-  const [bridgeUrl, setBridgeUrl] = useState('http://localhost:8787');
+  // Same-origin by default: vite proxies /bridge to the loopback bridge (see
+  // vite.config.ts). That works from any machine on the network, where
+  // http://localhost:8787 would silently point at the *browser's* own PC. The
+  // field stays editable for talking to a bridge directly.
+  const [bridgeUrl, setBridgeUrl] = useState(
+    typeof window !== 'undefined' ? `${window.location.origin}/bridge` : 'http://localhost:8787',
+  );
+  /** Management token for the gateway. Session-only by design — it must never
+   *  reach useUserSettings, which persists to localStorage. */
+  const [bridgeToken, setBridgeToken] = useState('');
   const [pathHint, setPathHint] = useState<string | null>(null);
 
   /* API mode */
@@ -63,20 +72,25 @@ export function ConnectScreen() {
   const checkBridge = useStore((s) => s.checkBridge);
 
   // Ask the bridge whether it has a reachable gateway with a valid token, so a
-  // failed connect says *why* instead of "failed to fetch".
+  // failed connect says *why* instead of "failed to fetch". Debounced because it
+  // depends on both inputs now, and a 40-character token fires a request per
+  // keystroke without it.
   useEffect(() => {
     if (mode !== 'api') return;
     let live = true;
     setHealthBusy(true);
-    void checkBridge(bridgeUrl).then((h) => {
-      if (!live) return;
-      setHealth(h);
-      setHealthBusy(false);
-    });
+    const timer = setTimeout(() => {
+      void checkBridge(bridgeUrl, bridgeToken).then((h) => {
+        if (!live) return;
+        setHealth(h);
+        setHealthBusy(false);
+      });
+    }, 300);
     return () => {
       live = false;
+      clearTimeout(timer);
     };
-  }, [mode, bridgeUrl, checkBridge]);
+  }, [mode, bridgeUrl, bridgeToken, checkBridge]);
 
   const b = health?.bifrost;
 
@@ -196,13 +210,20 @@ export function ConnectScreen() {
             <>
               <h1 className="text-xl font-semibold text-ink mb-1">Regeln direkt synchronisieren</h1>
               <p className="text-xs text-ink-faint mb-4">
-                Arbeitet gegen die Management-API einer laufenden Bifrost-Instanz. Der Token bleibt in der lokalen
-                Bridge — nie im Browser.
+                Arbeitet gegen die Management-API einer laufenden Bifrost-Instanz. Der Token geht an die Bridge,
+                nicht direkt ans Gateway — die Bridge lässt nur Routing-Rules durch.
               </p>
 
               <div className="mb-4 rounded-xl border border-border bg-surface-2/40 p-3 space-y-2">
                 <div className="text-[10px] uppercase tracking-wider text-ink-faint">Lokale Bridge</div>
                 <input className="input text-xs" value={bridgeUrl} onChange={(e) => setBridgeUrl(e.target.value)} placeholder="http://localhost:8787" />
+                <input
+                  className="input text-xs"
+                  type="password"
+                  value={bridgeToken}
+                  onChange={(e) => setBridgeToken(e.target.value)}
+                  placeholder="Management-Token (optional — sonst nutzt die Bridge ihren eigenen)"
+                />
                 <div className="flex items-start gap-2 text-[10px] leading-relaxed">
                   <span className={`mt-0.5 shrink-0 ${!health ? 'text-ink-faint' : b?.authOk ? 'text-neon' : 'text-neon-red'}`}>
                     {healthBusy ? '·' : b?.authOk ? '●' : '○'}
@@ -215,11 +236,16 @@ export function ConnectScreen() {
                         : (b?.reason ?? 'Bridge antwortet nicht. Starte sie mit npm run bridge.')}
                   </span>
                 </div>
-                <Button variant="outline" size="sm" className="w-full" onClick={() => void connectApiViaBridge(bridgeUrl)} disabled={busy || healthBusy}>
+                <Button variant="outline" size="sm" className="w-full" onClick={() => void connectApiViaBridge(bridgeUrl, bridgeToken)} disabled={busy || healthBusy}>
                   <Plug size={13} /> Mit Bridge verbinden
                 </Button>
+                <p className="text-[10px] text-ink-amber leading-relaxed">
+                  Ein Token hier überschreibt den der Bridge. Er bleibt nur für diese Sitzung im Speicher — aber er
+                  wird einmal an die Bridge geschickt, ohne HTTPS im Klartext. Für sensible Netze HTTPS einrichten
+                  (<code>BFRS_TLS_KEY</code>/<code>BFRS_TLS_CERT</code>).
+                </p>
                 <p className="text-[10px] text-ink-faint leading-relaxed">
-                  Bridge-Start: <code>BFRS_BIFROST_URL=http://localhost:8080 BFRS_BIFROST_TOKEN=&lt;key&gt; npm run bridge</code>
+                  Alternativ Token serverseitig: <code>BFRS_BIFROST_URL=http://localhost:8080 BFRS_BIFROST_TOKEN=&lt;key&gt; npm run bridge</code>
                 </p>
               </div>
 

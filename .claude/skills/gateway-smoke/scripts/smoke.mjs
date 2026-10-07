@@ -261,6 +261,81 @@ check('Bridge-Whitelist lehnt /api/config mit 403 ab', () => {
   eq(whitelist.status, 403, 'HTTP-Status');
 });
 
+// --- Token aus dem Browser --------------------------------------------------
+// The bridge used to read its token from the env only and overwrote whatever the
+// client sent, so a token typed on the Connect screen was dropped silently. Now a
+// client-supplied bearer wins and the env is the fallback. Both halves decide who
+// gets to touch the gateway, so both are driven against real bridges here.
+const NO_ENV_PORT = BRIDGE_PORT + 1;
+const WRONG_ENV_PORT = BRIDGE_PORT + 2;
+
+start('bridge-noenv', process.execPath, [resolve(REPO, 'scripts/local-bridge.mjs')], {
+  BFRS_BIFROST_URL: `http://127.0.0.1:${PORT}`,
+  // Explicitly blanked, not merely absent: `start` inherits process.env, so a
+  // developer who exported a token would otherwise test nothing new.
+  BFRS_BIFROST_TOKEN: '',
+  BFRS_BIFROST_USER: '',
+  BFRS_BIFROST_PASSWORD: '',
+  BFRS_BRIDGE_PORT: String(NO_ENV_PORT),
+});
+start('bridge-wrongenv', process.execPath, [resolve(REPO, 'scripts/local-bridge.mjs')], {
+  BFRS_BIFROST_URL: `http://127.0.0.1:${PORT}`,
+  BFRS_BIFROST_TOKEN: 'wrong-env-token',
+  BFRS_BRIDGE_PORT: String(WRONG_ENV_PORT),
+});
+
+const noEnv = `http://127.0.0.1:${NO_ENV_PORT}`;
+const wrongEnv = `http://127.0.0.1:${WRONG_ENV_PORT}`;
+await waitFor(`${noEnv}/api/health`);
+await waitFor(`${wrongEnv}/api/health`);
+
+const healthBare = await (await fetch(`${noEnv}/api/health`)).json();
+check('Bridge ohne Token irgendwo meldet "kein Token"', () => {
+  eq(healthBare.bifrost.authOk, false, 'authOk');
+  assert(/Kein Token/.test(healthBare.bifrost.reason ?? ''), `reason: ${healthBare.bifrost.reason}`);
+});
+
+const browserApi = new BifrostApi(bridgeTransport(noEnv, TOKEN));
+let browserRead = null;
+try { browserRead = await browserApi.listRules(); } catch (err) { browserRead = err.message; }
+check('Browser-Token funktioniert ganz ohne Env-Token', () => {
+  assert(Array.isArray(browserRead), `listRules: ${browserRead}`);
+});
+
+const browserRule = rule({ id: 'browser-token', name: 'Browser token' });
+const browserCreated = await browserApi.createRule(toWriteShape(browserRule));
+await browserApi.updateRule(browserCreated.id, { priority: 3 });
+await browserApi.deleteRule(browserCreated.id);
+check('Schreib-Zyklus läuft durch den Browser-Token', () => {
+  assert(browserCreated?.id?.startsWith('srv-'), `keine Server-ID: ${JSON.stringify(browserCreated)}`);
+});
+
+const overrideApi = new BifrostApi(bridgeTransport(wrongEnv, TOKEN));
+let overrideResult = null;
+try { overrideResult = await overrideApi.listRules(); } catch (err) { overrideResult = err.message; }
+check('Browser-Token schlägt falschen Env-Token', () => {
+  assert(Array.isArray(overrideResult), `listRules: ${overrideResult}`);
+});
+
+// Not /api/version: the mock serves that one without auth, so it proves nothing
+// about the token. The rules collection does enforce it.
+const envOnlyApi = new BifrostApi(bridgeTransport(wrongEnv));
+let envOnlyStatus = 0;
+try { await envOnlyApi.listRules(); } catch (err) { envOnlyStatus = err.status ?? 0; }
+check('Falscher Env-Token greift weiter, wenn der Browser keinen sendet', () => {
+  eq(envOnlyStatus, 401, 'status');
+});
+
+// A malformed header must fall back to the env rather than be relayed. Probed
+// against the bridge that has no token at all, so a 503 can only mean the value
+// was discarded — a relayed one would have reached the gateway as a bearer.
+const malformedRes = await fetch(`${noEnv}/api/bifrost/api/routing/rules`, { headers: { authorization: 'Basic nope' } });
+const malformedBody = await malformedRes.text();
+check('Header ohne "Bearer" wird verworfen, nicht weitergeleitet', () => {
+  eq(malformedRes.status, 503, 'HTTP-Status');
+  assert(/nicht gesetzt/.test(malformedBody), `body: ${malformedBody}`);
+});
+
 // --- result ----------------------------------------------------------------
 const total = passed + failures.length;
 console.log(`\n${passed}/${total} bestanden`);

@@ -983,3 +983,181 @@ rewritten, then the full run was repeated with-skill and baseline in isolated co
 - [x] `node .claude/skills/release-bump/scripts/bump.mjs --check` — both build locations agree.
 - [x] Every relative doc link across the doc set resolves to an existing file.
 - [x] Both edited skills pass `quick_validate.py`.
+
+## v0.2.9 Build 26100701 — Bridge aus dem LAN erreichbar (Vite-Proxy) ✅
+
+### Symptom
+Die App lief auf einem Server (Bifrost + BFRS auf 5173 + Bridge auf 8787), der Browser auf einem
+anderen Rechner. BFRS war erreichbar, die Bridge nicht: `NetworkError when attempting to fetch
+resource`. Getestet wurden `localhost:8787`, `127.0.0.1:8787` und die Server-IP — alle drei schlugen
+fehl.
+
+### Ursache
+`local-bridge.mjs` bindet per Default auf `127.0.0.1` (`BFRS_BRIDGE_HOST`). Die beiden Testadressen
+scheiterten aus verschiedenen Gründen, sahen aber gleich aus:
+- `localhost:8787` im Browser bedeutet *den Browser-Rechner*, nicht den Gateway-Rechner. Dort läuft
+  keine Bridge.
+- Die Server-IP erreichte den Host, aber auf dem LAN-Interface lauschte nichts.
+
+CORS war unbeteiligt: die Bridge setzt `access-control-allow-origin: *`. Der Fehler sah nach einem
+CORS-Problem aus und war keines.
+
+### What changed
+- [x] `vite.config.ts`: `server.proxy` für `/bridge` → `http://127.0.0.1:8787` mit
+      `rewrite`, das das Präfix entfernt. Der Dev-Server spricht damit im Namen des Browsers mit der
+      Bridge; die Bridge selbst bleibt auf Loopback und der Management-Token verlässt den Host
+      nicht. Nebeneffekt: kein zusätzlicher Firewall-Port, und alle Requests sind same-origin.
+- [x] `ConnectScreen.tsx`: Default-Bridge-URL ist jetzt `${window.location.origin}/bridge` statt
+      `http://localhost:8787`. Der Default war an jedem entfernten Client falsch. Das Feld bleibt
+      editierbar.
+- [x] Build-Nummer an beiden Stellen: `src/lib/version.ts` und `package.json:build`.
+- [x] Doku: neuer README-Abschnitt "Reaching the bridge from another machine", Gotcha in
+      `CLAUDE.md` (Bridge-Block) mit dem Hinweis, dass nur der Dev-Server proxyt.
+
+### Bewusst nicht gemacht
+- Kein `BFRS_BRIDGE_HOST=0.0.0.0` und keine Authentifizierung auf dem Proxy. `/bridge` ist so offen
+  wie Port 5173 — dieselbe Trust-Grenze, die für die App ohnehin gilt.
+- Kein `preview.proxy`: der Production-Build (`vite preview`) proxyt nicht. Bei Bedarf nachziehen.
+
+### Validation
+- [x] `npm run typecheck` sauber, `npm test` — 95 Tests in 14 Dateien, alle grün.
+- [x] Bridge und Dev-Server lokal gestartet, alle drei Proxy-Checks bestanden:
+      - `curl http://127.0.0.1:8787/api/health` → `200`
+      - `curl http://127.0.0.1:5173/bridge/api/health` → identisches JSON (der `rewrite` stimmt)
+      - `curl http://127.0.0.1:5173/bridge/api/bifrost/api-keys` → `403 Path not allowed by the
+        bridge` (die Whitelist greift auch durch den Proxy)
+- [x] `node .claude/skills/release-bump/scripts/bump.mjs --check` — beide Build-Stellen stimmen.
+- [ ] Nicht auf dem Zielserver geprüft: die Kette Browser → LAN → 5173 → Proxy → Bridge über die
+      tatsächliche Netzwerkstrecke. Die Proxy-Logik ist lokal verifiziert, die Erreichbarkeit von
+      Port 5173 war bereits vorher gegeben.
+
+## v0.2.9 Build 26100702 — Management-Token im Browser + optionales HTTPS ✅
+
+### Anlass
+Ein Env-Export pro Bridge-Neustart ist lästig. Gewünscht: das Token dort eingeben, wo auch die
+Bridge-URL steht.
+
+### Ausgangslage
+Der Token konnte gar nicht durchkommen, an zwei Stellen:
+- `local-bridge.mjs` las ihn ausschließlich aus der Env und überschrieb jeden eingehenden
+  `authorization`-Header. Ein Browser-Token wäre stillschweigend verworfen worden.
+- `bridgeTransport()` setzte `token: null`, sodass `authHeaders()` gar keinen Header erzeugte.
+
+### What changed
+- [x] `local-bridge.mjs`: `bifrostToken(requestToken)` — der Request gewinnt über die Env, die Env
+      bleibt Fallback. Neu: `requestToken(req)` liest die Bearer-Credential aus dem Request. Eine
+      Trust-Boundary, also mit Regex-Validierung und Längen-Cap; alles andere wird verworfen.
+      `bifrostFetch()` und `bifrostStatus()` nehmen den Token durch, damit `/api/health` nicht
+      dauerhaft „Token abgelehnt" meldet.
+- [x] `bifrostApi.ts`: `bridgeTransport(bridgeUrl, token = null)` und
+      `fetchBridgeHealth(bridgeUrl, token = null)`. Der Default hält alle bestehenden Aufrufer
+      gültig, inklusive `smoke.mjs`.
+- [x] `useStore.ts`: `checkBridge` / `connectApiViaBridge` nehmen den Token optional entgegen. Leer
+      oder weggelassen → `null` → die Bridge nutzt ihre Env.
+- [x] `ConnectScreen.tsx`: Passwort-Feld unter der Bridge-URL. Component-State, **nicht**
+      `useUserSettings` — das persistiert in `localStorage`. Health-Check auf 300 ms debounced,
+      weil er jetzt von zwei Feldern abhängt.
+- [x] `vite.config.ts`: HTTPS aktiv, sobald **beide** Variablen `BFRS_TLS_KEY`/`BFRS_TLS_CERT`
+      gesetzt sind. Default unverändert HTTP.
+- [x] `gateway-smoke`: sechs neue Checks gegen zwei zusätzlich gestartete Bridges.
+- [x] Build-Nummer an beiden Stellen.
+
+### Zwei Fehler, die die Validierung gefunden hat
+- **Doppeltes `Bearer`:** `requestToken` gab den kompletten Header zurück, `bifrostFetch` setzte
+  nochmal `Bearer ` davor — `Bearer Bearer smoke-secret`, also 401, der wie ein falsches Token
+  aussah. Jetzt gibt die Funktion nur die Credential zurück.
+- **Falsche Testannahme:** zwei neue Checks schlugen fehl, weil `/api/version` im Mock **ohne**
+  Auth serviert wird (der Studio prüft dort vor der Anmeldung). Die Checks testen jetzt
+  `/api/routing/rules`, wo Auth erzwungen wird. Siehe unten — das ist auch für echte Bifrost-Instanzen
+  offen.
+
+### Was sich sicherheitlich ändert
+Der Token verlässt den Server nicht mehr zwangsläufig. Er liegt im JS-Speicher (jedes XSS und jedes
+bösartige Bundle-Paket kann ihn lesen — deshalb nicht persistiert) und wird einmal über das LAN
+geschickt, bei HTTP im Klartext. Die Whitelist bleibt erhalten, weil der Token an die **Bridge**
+geht, nicht ans Gateway: das ist der Unterschied zu „Direkt verbinden". Optional ist HTTPS
+konfigurierbar.
+
+### Validation
+- [x] `npm run typecheck` sauber.
+- [x] `npm test` — 95 Tests in 14 Dateien, alle grün.
+- [x] `node .claude/skills/gateway-smoke/scripts/smoke.mjs` — **26/26** (vorher 20). Die neuen Checks:
+      Browser-Token ohne Env funktioniert inklusive Schreib-Zyklus; Browser-Token schlägt falschen
+      Env-Token; falscher Env-Token greift weiter, wenn der Browser keinen sendet; Header ohne
+      `Bearer` wird verworfen statt weitergeleitet; Bridge ohne Token irgendwo meldet „kein Token".
+- [x] `node .claude/skills/release-bump/scripts/bump.mjs --check` — beide Stellen stimmen.
+
+### Offen
+Ob echtes Bifrost `/api/version` ohne Auth ausliefert, ist ungeklärt (die Doku sagt nichts dazu).
+Falls ja, ist die Statusanzeige „Token gültig" eine Anzeige, die nicht rot werden kann. Siehe
+`TODO.md`.
+
+### Nachtrag — TODO.md aufgeräumt (gleicher Build)
+
+`TODO.md` widersprach seinem eigenen Kopf: Zeilen 6–8 sagen „completed work … not here", 36 % der
+Datei waren trotzdem eine „Implemented ✅"-Liste, weitere ~45 erledigte `[x]`-Punkte im
+KI-Abschnitt. All das steht bereits in `PROGRESS.md` und `CHANGELOG.md`.
+
+- **195 → 83 Zeilen.** „Implemented ✅" ersatzlos gestrichen, KI-Abschnitt auf die offenen Punkte
+  reduziert, die erledigten „Phasen" als Duplikate der offenen Punkte aufgelöst.
+- **Die spekulative Server-Store-Spezifikation** (ENV-Variablennamen `BFRS_STORE_DRIVER` usw.)
+  entfernt — sie stand als Planung im Detail, obwohl weder ein Bedarf noch eine Entscheidung
+  dahintersteht. Offen bleiben die drei Designfragen, die tatsächlich eine Entscheidung brauchen.
+- **Prioritäten ergänzt**, weil der Kopf sie versprochen hat und `Open work` eine unrangierte
+  Flachliste war: hoch / mittel / braucht Architekturentscheidung.
+- **Verifiziert statt geglaubt:** Light Mode existiert (`theme.ts`, `ThemeMode`/`toggleThemeMode`),
+  Anthropic-API ist offen (null Treffer für `/v1/messages`), XML- und LiteLLM-Export existieren,
+  `AiAssistantPanel.tsx` existiert. Neu aufgenommen und gegen den Code geprüft: es gibt keine
+  Tastaturnavigation der Canvas (der einzige `keydown`-Handler in `FlowCanvas.tsx:153` trackt nur
+  den Selection-Modifier), keine Resize-Handles in `canvas/nodes/` (null Treffer) und keine
+  Projektbindung in `lib/db/snapshots.ts` (kein `projectId`).
+
+**Zwei Folgefehler mitgezogen.** Durch die Token-Änderung aus dem vorigen Eintrag waren auch zwei
+Aussagen in `ARCHITECTURE.md` falsch geworden — der Token komme „aus `BFRS_BIFROST_URL` +
+`BFRS_BIFROST_TOKEN`" und die Bridge halte ihn. Beide korrigiert. Dazu zwei Abschnitte, die vorher
+nirgends standen: die Neben-Stores mit ihren localStorage-Keys und der KI-Pfad mit der Aussage, dass
+Drafts nur über den DiffModal und nur bei fehlerfreier Validierung an den Canvas kommen
+(`AiAssistantPanel.tsx:92-107,304`).
+
+Build-Nummer: Der Bump-Skript lief, änderte aber nichts — es rechnet `YYMMDDHH`, und dieser Eintrag
+fällt in dieselbe Stunde wie 26100702. Kein Fehler, aber eine Eigenschaft des Formats: mehrere
+Änderungen innerhalb einer Stunde teilen sich eine Build-Nummer.
+
+Validation: `npm test` 95/95 grün, alle relativen Doku-Links auflösbar, Build-Check beide Stellen
+gleich.
+
+## v0.2.9 Build 26100702 — npm audit: source-map-js behoben, Tailwind-v4-Kette als Milestone
+
+Build-Nummer unverändert: `YYMMDDHH` hat nur Stundenauflösung, dieser Eintrag fällt in dieselbe
+Stunde wie die beiden vorigen. Drei getrennte Änderungen teilen sich damit 26100702.
+
+### Befund
+`npm install` meldete 8 Vulnerabilities (2 moderate, 6 high). Aufschlüsselung:
+
+- **`npm audit --omit=dev` → 0.** Keine einzige Meldung betraf Produktions-Abhängigkeiten
+  (`fast-xml-parser`, `framer-motion`, `lucide-react`, `nanoid`, `react`, `react-dom`, `reactflow`,
+  `sql.js`, `zustand`). Alle acht waren transitive `devDependencies` von `tailwindcss@3` und
+  `postcss`. Zusätzlich im gebauten `dist/assets/index-*.js` nach allen Paketnamen gesucht: null
+  Treffer.
+- **`source-map-js` (high)** — Advisories betreffen `1.0.0 - 1.2.1`, gepatcht ist `1.2.2`.
+  `postcss@8.5.25` verlangte `^1.2.1` und erlaubt 1.2.2 also bereits; der Lockfile war nur auf eine
+  alte Auflösung gepinnt. Mit `npm update source-map-js` ohne Breaking Change behoben.
+- **`braces` (high) + `postcss-selector-parser` (moderate)** — die betroffene Tailwind-Spanne ist
+  `0.5.0 - 3.4.19`, und `3.4.19` ist die letzte v3. Kein Patch innerhalb von v3 möglich; nur
+  `tailwindcss@4` behebt beide.
+
+### Warum keine Migration
+Der DoS in `braces` braucht tief verschachtelte Glob-Muster. Die Muster stammen aus der eigenen
+`tailwind.config.js` und laufen beim Build auf der Maschine des Entwicklers — wer sie schreiben kann,
+hat bereits Schreibrecht auf dem Repo. Es gibt keine erreichbare Trust-Grenze, während die
+Migration die verbindliche Palette aus `DESIGN.md` und die „Tailwind only"-Regel berührt. Als
+Milestone mit CSS-Diff eingetragen, nicht als `npm audit fix --force`.
+
+### What changed
+- [x] `source-map-js` auf 1.2.2 gehoben. Audit: 8 → 7.
+- [x] `MILESTONES.md`: erster Eintrag — Tailwind-v4-Migration mit Warum/Umfang/Erster Schritt.
+- [x] `CLAUDE.md`: neuer Fallstrick-Block **Dependencies** — die 7 Advisories sind der bekannte
+      Zustand, `npm audit fix --force` ist verboten, und ein Lockfile-Pin ist kein Override-Bedarf.
+- [x] Build-Nummer.
+
+Validation: `npm test` 95/95 grün, `npm run build` erfolgreich, `npm audit --omit=dev` 0.

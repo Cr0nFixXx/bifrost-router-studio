@@ -36,7 +36,8 @@ No request traffic is ever proxied, in either mode.
 - Prefer small, focused files; colocate node bodies with `BaseNode`.
 - **Serialization boundaries** — `annotation` nodes and the visual elements in `useUserSettings` are
   canvas overlays. They must never reach the Bifrost routing tables, in either mode.
-  `useUserSettings` holds no gateway token; that lives in the bridge environment.
+  `useUserSettings` holds no gateway token: it persists to `localStorage`, and the Connect screen's
+  token field is component state on purpose, so a reload drops it.
 - **UI placement** — Dashboard and Settings are top-level modals from the TopBar, not right-panel
   tabs. RightPanel is reserved for Inspector, Rules, History, Providers and Simulation.
 
@@ -113,6 +114,27 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
   Address it directly; do not route it through `request()`.
 
 **Bridge (`scripts/local-bridge.mjs`)**
+- The management token has two sources and **the request wins over the environment**
+  (`bifrostToken(requestToken)`). A field that is silently ignored whenever `BFRS_BIFROST_TOKEN` is
+  set is worse than no field. Consequence: anything that can reach the bridge can override the
+  server-side credential — acceptable only because the bridge stays on loopback. If it is ever
+  exposed, this precedence becomes the hole.
+- `requestToken()` returns the credential **without** the `Bearer ` prefix; `bifrostFetch` adds it
+  back. Forwarding the raw header produces `Bearer Bearer …` and a 401 that looks like a wrong token.
+- `authOk` in `/api/health` comes from probing `/api/version`, which `mock-bifrost.mjs` serves
+  **unauthenticated** ([mock-bifrost.mjs:120](.claude/skills/gateway-smoke/scripts/mock-bifrost.mjs#L120)).
+  Against the mock the status light is therefore always green, and whether real Bifrost protects
+  that path is unverified — so "Token gültig" may be a status light that cannot go red. Do not write
+  a smoke check that infers auth from `/api/version`; use `/api/routing/rules`.
+- `host` defaults to `127.0.0.1`. A browser on another machine therefore cannot reach the bridge
+  by IP — and `localhost:8787` in *its* address bar points at the browser host, not the gateway
+  host. Both surface as the same opaque `NetworkError`, which sends you hunting for a CORS bug that
+  isn't there. The dev server proxies `/bridge/*` (see `vite.config.ts`); the Connect screen
+  defaults to `<origin>/bridge`. Only the dev server proxies it — a production build needs
+  `preview.proxy` or a real reverse proxy.
+- The dev server serves HTTPS when **both** `BFRS_TLS_KEY` and `BFRS_TLS_CERT` are set. Mixed
+  content then bites: on an `https://` page the browser blocks `fetch()` against `http://`, so a
+  hand-typed `http://localhost:8787` bridge URL fails with no error worth reading.
 - The whitelist matches the path **including** `/api`. The client sends `/api/bifrost` + `/api/routing`
   + `/rules`; matching `/routing/rules` alone rejects everything with a 403 that looks like a routing
   problem.
@@ -127,6 +149,18 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
   `package.json`. Bumping one and not the other is easy to miss.
 - `v1.x` in the logs is the pre-alpha line, `v0.x` the current one. They are not comparable; do not
   read a `v1.4.x` heading as newer than a `v0.2.x` one.
+
+**Dependencies**
+- **`npm audit` reporting 7 advisories is the known state**, not a regression. All of them are
+  transitive `devDependencies` of `tailwindcss@3`: `npm audit --omit=dev` reports 0, and none of the
+  packages appear in `dist/`. The fix is a Tailwind v4 migration — see `MILESTONES.md`.
+- **Never run `npm audit fix --force`.** It installs `tailwindcss@4` as a side effect of a command
+  that reads like a maintenance chore, rewriting the config format and potentially changing generated
+  CSS in the same step nobody reviews. The migration is a milestone with a CSS diff, not a flag.
+- A transitive advisory that the parent's range already allows is usually just a pinned lockfile.
+  Check `npm view <parent>@<version> dependencies.<pkg>` before assuming a bump needs an override:
+  `postcss` wanted `^1.2.1` all along, and `npm update source-map-js` resolved it without a breaking
+  change.
 
 **Node model**
 - `complexity` and `model` node kinds are legacy. They exist for workspace migration and are not in

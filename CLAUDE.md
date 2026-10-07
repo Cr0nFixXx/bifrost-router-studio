@@ -103,6 +103,24 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
   Verify a write by re-reading the panel. The diff source must be `getCanvasRules()` — `state.rules`
   is a snapshot taken at connect time and is **not** updated by canvas edits, so diffing against it
   compares the gateway with itself and silently pushes nothing.
+- **The gateway holds UNIQUE (scope, priority).** A swap of 0 and 1 cannot be written sequentially —
+  the first rule takes the priority the second still holds, and the gateway answers 500. Only rules
+  whose *target* priority is occupied need `planPriorityPhases` to step them out of the way first;
+  the file-mode schema has no such constraint, so drag-and-drop works locally and only breaks at the
+  gateway. The mock simulates it (`mock-bifrost.mjs`, `priorityTaken`) — without that simulation every
+  reordering looks healthy.
+- **Isolate every change in `applyDiff`.** One rule the gateway refuses must not strand the rest of
+  the batch; that was the original behaviour and it meant a single bad fallback held back every
+  other edit. Failures are collected per change in `ApplyResult.failures` — a bare count is a number
+  the user cannot act on. Scope changes travel as one `ScopeMove`, create and delete together: a
+  rejected create must not take the old rule down with it.
+- **Never `refreshFromApi()` after a partial sync.** It rebuilds the canvas from the gateway and
+  would throw away the very edits the gateway just refused.
+- **Targets and fallbacks are validated differently.** Fallbacks carry a server-side provider-prefix
+  check that rejects with 400 and is **not documented**; targets are documented as plain optional
+  strings. Do not add a provider whitelist to the client — it runs behind the gateway and blocks
+  rules that would have worked. `providerWarnings` is a hint shown before the push, deliberately not
+  a blocker.
 - Never round-trip a GET response into POST/PUT. `id`, `created_at`, `updated_at` and `scope` are in
   the read shape but not in any write schema. Go through `toWriteShape` / `toUpdateShape`.
 - `scope`/`scope_id` are absent from the update schema. Moving a rule between scopes is delete +

@@ -41,6 +41,7 @@ import {
   applyDiff,
   diffRules as diffRulesForSync,
   diffIsEmpty,
+  providerWarnings,
 } from '@/lib/sync';
 import { useUserSettings } from '@/store/useUserSettings';
 import {
@@ -68,6 +69,9 @@ export interface SyncStatus {
   error?: string;
   /** Rules the diff refused to push (bad weights, missing scope_id, …). */
   rejected: Array<{ id: string; name: string; reason: string }>;
+  /** One entry per change the gateway refused, naming the rule and the reason.
+   *  Without this, `pending` is a number the user cannot act on. */
+  failures: Array<{ op: 'create' | 'update' | 'delete' | 'move'; name: string; message: string }>;
 }
 
 export interface ApiConnectOptions {
@@ -132,6 +136,9 @@ export interface DiffView {
   diffs: HistoryDiff[];
   onRestore?: () => void;
   restoreLabel?: string;
+  /** Non-blocking warnings shown above the diff. They never disable the apply
+   *  button — the gateway owns the provider whitelist, this is a hint only. */
+  hints?: Array<{ id: string; name: string; reason: string }>;
 }
 
 interface StudioState {
@@ -285,10 +292,17 @@ interface StudioState {
   getCanvasRules: () => RoutingRule[];
   reorderRulesByIds: (ids: string[]) => void;
   previewDbDiff: () => HistoryDiff[];
+  /** Reads the gateway, so it is async and it can fail where the DB path cannot. */
+  previewApiDiff: () => Promise<HistoryDiff[] | null>;
   diffView: DiffView | null;
   showDiff: (view: DiffView) => void;
   closeDiff: () => void;
+  /** The "N nicht übertragen" status line opens this. */
+  syncFailuresOpen: boolean;
+  openSyncFailures: () => void;
+  closeSyncFailures: () => void;
   openDbDiff: () => void;
+  openApiDiff: () => Promise<void>;
 
   /* rule-set snapshots (lightweight version control) */
   snapshots: RuleSnapshot[];
@@ -346,7 +360,8 @@ async function openApiSession(transport: ApiTransport, label: string): Promise<v
       edges: syncChainEdges(nodes, edges),
       dirty: false,
       selectedNodeId: null,
-      syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [] },
+      syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [], failures: [] },
+      syncFailuresOpen: false,
     });
     useStore.getState().fetchModels();
     useStore.getState().recompute();
@@ -489,7 +504,7 @@ export const useStore = create<StudioState>((set, get) => ({
 
   connectionSource: 'file',
   apiLabel: null,
-  syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [] },
+  syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [], failures: [] },
 
   past: [],
   future: [],
@@ -502,6 +517,7 @@ export const useStore = create<StudioState>((set, get) => ({
   simPlaybackIndex: 0,
 
   diffView: null,
+  syncFailuresOpen: false,
   snapshots: [],
 
   /* --------------------------- connect ----------------------------- */
@@ -601,22 +617,27 @@ export const useStore = create<StudioState>((set, get) => ({
             lastSyncedAt: new Date().toISOString(),
             error: diff.rejected.length ? 'Einige Regeln wurden nicht übertragen.' : undefined,
             rejected: diff.rejected,
+            failures: [],
           },
         });
         return;
       }
-      const result = await applyDiff(activeApi, diff);
+      const result = await applyDiff(activeApi, diff, remote);
       const pending = result.failed;
       set({
         syncStatus: {
           state: pending ? 'error' : 'idle',
           pending,
           lastSyncedAt: new Date().toISOString(),
-          error: result.error,
+          error: pending ? result.failures.map((f) => `${f.name}: ${f.message}`).join(' · ') : undefined,
           rejected: diff.rejected,
+          failures: result.failures,
         },
         dirty: pending > 0,
       });
+      // Only on a clean run. `refreshFromApi` rebuilds the canvas from the
+      // gateway, so doing it with changes still pending would throw away the
+      // edits the gateway just refused.
       if (!pending) get().refreshFromApi();
     } catch (err) {
       const message = err instanceof BifrostApiError ? err.message : (err as Error).message;
@@ -668,7 +689,8 @@ export const useStore = create<StudioState>((set, get) => ({
       canvasLocked: false,
       canvasMode: 'drag',
       dirty: false,
-      syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [] },
+      syncStatus: { state: 'idle', pending: 0, lastSyncedAt: null, rejected: [], failures: [] },
+      syncFailuresOpen: false,
     });
   },
 
@@ -1216,8 +1238,37 @@ export const useStore = create<StudioState>((set, get) => ({
     get().recompute();
   },
   previewDbDiff: () => diffRules(activeDb ? activeDb.listRules() : [], get().getCanvasRules()),
+  previewApiDiff: async () => {
+    if (!activeApi) return null;
+    const remote = (await activeApi.listRules()).map(apiRuleToRouting);
+    return diffRules(remote, get().getCanvasRules());
+  },
   showDiff: (view) => set({ diffView: view }),
   closeDiff: () => set({ diffView: null }),
+  openSyncFailures: () => set({ syncFailuresOpen: true }),
+  closeSyncFailures: () => set({ syncFailuresOpen: false }),
+  openApiDiff: async () => {
+    if (!activeApi) return;
+    set({ busy: true, error: null });
+    try {
+      const diffs = (await get().previewApiDiff()) ?? [];
+      get().showDiff({
+        title: 'Diff: Canvas → Gateway',
+        subtitle: 'Das sind die Änderungen, die Übertragen schreibt.',
+        diffs,
+        hints: providerWarnings(get().getCanvasRules(), get().modelCatalog),
+        onRestore: () => {
+          get().closeDiff();
+          void get().syncNow();
+        },
+        restoreLabel: 'Übertragen',
+      });
+    } catch (err) {
+      set({ error: (err as Error).message });
+    } finally {
+      set({ busy: false });
+    }
+  },
   openDbDiff: () => {
     const diffs = get().previewDbDiff();
     get().showDiff({

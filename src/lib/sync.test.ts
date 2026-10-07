@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiRule, RoutingRule } from '@/types/bifrost';
 import { apiRuleToRouting, toWriteShape } from '@/lib/bifrostApi';
-import { applyDiff, diffIsEmpty, diffRules, rejectionReason, toUpdateShape } from '@/lib/sync';
+import { applyDiff, diffIsEmpty, diffRules, planPriorityPhases, rejectionReason, toUpdateShape } from '@/lib/sync';
 
 function rule(patch: Partial<RoutingRule> = {}): RoutingRule {
   return {
@@ -72,12 +72,17 @@ describe('diffRules', () => {
     expect(diff.create).toHaveLength(0);
   });
 
-  it('emits delete + create when a rule changes scope, never a PUT', () => {
+  it('emits a coupled move when a rule changes scope, never a PUT', () => {
     const diff = diffRules([rule({ scope: 'team', scope_id: 'team-7' })], [remote()]);
     expect(diff.update).toHaveLength(0);
-    expect(diff.delete).toEqual(['r1']);
-    expect(diff.create[0].scope).toBe('team');
-    expect(diff.create[0].scope_id).toBe('team-7');
+    // Not two loose entries: the pair travels together so a refused create
+    // cannot take the old rule down with it.
+    expect(diff.delete).toEqual([]);
+    expect(diff.create).toEqual([]);
+    expect(diff.moves).toHaveLength(1);
+    expect(diff.moves[0].deleteId).toBe('r1');
+    expect(diff.moves[0].create.scope).toBe('team');
+    expect(diff.moves[0].create.scope_id).toBe('team-7');
   });
 
   it('rejects a rule with weights that do not sum to 1 and keeps pushing the rest', () => {
@@ -147,20 +152,71 @@ describe('applyDiff', () => {
   it('creates before it deletes so a scope move never has a gap', async () => {
     const client = api();
     const diff = diffRules([rule({ scope: 'team', scope_id: 't1' })], [remote()]);
-    const result = await applyDiff(client as never, diff);
+    const result = await applyDiff(client as never, diff, [remote()]);
     expect(result).toMatchObject({ created: 1, deleted: 1, failed: 0 });
     expect(client.createRule.mock.invocationCallOrder[0]).toBeLessThan(client.deleteRule.mock.invocationCallOrder[0]);
   });
 
-  it('stops at the first failure and counts what did not make it', async () => {
+  it('keeps a scope move together: a rejected create must not take the old rule down', async () => {
     const client = api();
-    client.updateRule.mockRejectedValue(new Error('weights must sum to 1'));
-    const diff = diffRules([rule({ priority: 1 }), rule({ id: 'r2', priority: 2 })], [remote(), remote({ id: 'r2' })]);
-    const result = await applyDiff(client as never, diff);
-    expect(result.error).toMatch(/weights/);
-    // Neither update reached the gateway — the one that threw and the one
-    // never attempted both count as "not transferred".
-    expect(result.failed).toBe(2);
-    expect(client.updateRule).toHaveBeenCalledTimes(1);
+    client.createRule.mockRejectedValue(new Error('fallbacks[1] "Test/prefix/model" is invalid'));
+    const diff = diffRules([rule({ scope: 'team', scope_id: 't1' })], [remote()]);
+    const result = await applyDiff(client as never, diff, [remote()]);
+
+    expect(client.deleteRule).not.toHaveBeenCalled();
+    expect(result.deleted).toBe(0);
+    expect(result.failures).toEqual([
+      { op: 'move', name: 'Cheap tier', message: expect.stringMatching(/Test\/prefix\/model/) },
+    ]);
+  });
+
+  it('isolates failures: one refused rule must not strand the rest of the batch', async () => {
+    const client = api();
+    client.updateRule.mockImplementation((id: string) =>
+      id === 'bad' ? Promise.reject(new Error('fallbacks[1] "Test/prefix/model" is invalid')) : Promise.resolve({}),
+    );
+    const diff = diffRules(
+      [rule({ id: 'bad', name: 'Broken' }), rule({ id: 'good', name: 'Fine' })],
+      [remote({ id: 'bad' }), remote({ id: 'good' })],
+    );
+    const result = await applyDiff(client as never, diff, [remote({ id: 'bad' }), remote({ id: 'good' })]);
+
+    // Both were attempted, one landed. This is the behaviour the old
+    // stop-at-first-failure loop made impossible.
+    expect(result.updated).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.failures).toEqual([
+      { op: 'update', name: 'Broken', message: expect.stringMatching(/Test\/prefix\/model/) },
+    ]);
+  });
+});
+
+describe('planPriorityPhases', () => {
+  const swapRemote = [remote({ priority: 0 }), remote({ id: 'r2', priority: 1 })];
+
+  it('dodges first when the target priority is occupied', () => {
+    // A swap of 0 and 1 cannot be written sequentially: the first rule takes
+    // the priority the second still holds.
+    const updates = diffRules(
+      [rule({ priority: 1 }), rule({ id: 'r2', priority: 0 })],
+      swapRemote,
+    ).update;
+    const plan = planPriorityPhases(updates, swapRemote);
+
+    expect(plan.dodge.map((d) => d.id)).toEqual(['r1', 'r2']);
+    // Above everything the gateway reports, so both values are free.
+    expect(plan.dodge.map((d) => d.priority)).toEqual([2, 3]);
+    expect(plan.after).toEqual([{ id: 'r1', priority: 1 }, { id: 'r2', priority: 0 }]);
+  });
+
+  it('does not dodge when the target priority is free', () => {
+    const updates = diffRules([rule({ priority: 7 })], swapRemote).update;
+    const plan = planPriorityPhases(updates, swapRemote);
+    expect(plan.dodge).toEqual([]);
+  });
+
+  it('does not dodge a rule that already holds its target', () => {
+    const updates = diffRules([rule({ name: 'Renamed' })], swapRemote).update;
+    expect(planPriorityPhases(updates, swapRemote).dodge).toEqual([]);
   });
 });

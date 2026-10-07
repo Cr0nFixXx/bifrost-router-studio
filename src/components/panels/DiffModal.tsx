@@ -5,7 +5,7 @@
  */
 import { useStore } from '@/store/useStore';
 import { Modal, Chip, Button } from '@/components/ui/primitives';
-import { Check, Plus, Minus, Pencil, RotateCcw } from 'lucide-react';
+import { Check, Plus, Minus, Pencil, RotateCcw, AlertTriangle } from 'lucide-react';
 import { summarizeDiff, type ChangeKind, type RuleDiff } from '@/lib/diff';
 
 const KIND_META: Record<ChangeKind, { label: string; tone: 'green' | 'red' | 'amber' | 'neutral'; icon: React.ReactNode }> = {
@@ -107,6 +107,22 @@ export function DiffModal() {
             <Chip tone="red">{summary.removed} removed</Chip>
             <Chip tone="neutral">{summary.unchanged} unchanged</Chip>
           </div>
+
+          {/* Hints, never blockers: the gateway owns the provider whitelist, and
+              a catalog kept in the client only runs behind it. */}
+          {view.hints && view.hints.length > 0 && (
+            <div className="mb-4 rounded-lg border border-neon-amber/30 bg-neon-amber/5 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-neon-amber">
+                <AlertTriangle size={13} />
+                {view.hints.length} {view.hints.length === 1 ? 'Hinweis' : 'Hinweise'} — Übertragen ist trotzdem möglich
+              </div>
+              <ul className="mt-1 list-disc pl-4 space-y-0.5 text-[11px] text-ink-muted">
+                {view.hints.map((h) => (
+                  <li key={h.id}><span className="text-ink">{h.name}</span>: {h.reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {visible.length === 0 ? (
             <div className="text-center py-10 text-sm text-ink-faint">

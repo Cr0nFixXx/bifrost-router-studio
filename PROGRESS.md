@@ -1213,3 +1213,88 @@ Unit-Test-Suite für reine Funktionen per Konstruktion nicht sieht. Der neue Tes
 
 Validation: `npm test` 99/99 grün (vorher 95), `npx tsc --noEmit` fehlerfrei, Regressionstest gegen
 den ungepatchten Stand reproduziert alle drei Schreibfehler.
+
+## v0.2.9 Build 26100715 — Sync isoliert, Prioritäts-Tausch, API-Diff ✅
+
+### Anlass
+Der Nutzer hat Build 26100704 gegen eine **echte** Bifrost-Instanz getestet. Der erste Fix griff —
+Synchronisieren schrieb überhaupt nichts mehr — aber vier Symptome blieben:
+
+1. „3 nicht übertragen", obwohl nur eine Regel kaputt war
+2. Priority-Tausch → `500 "routing rule with priority 0 already exists for scope 'global'"`
+3. Fallback mit totem Provider → `400`, ohne sichtbare Begründung
+4. keine Diff-Ansicht im API-Modus
+
+### Root Causes
+
+**A — `applyDiff` brach beim ersten Fehler ab.** Ein `try` um drei sequentielle Schleifen; `failed`
+zählte auch Calls, die nie versucht wurden. Eine kaputte Regel blockierte den ganzen Batch. Das
+Verhalten war in `sync.test.ts` als *gewünscht* festgeschrieben („stops at the first failure and
+counts what did not make it", `failed === 2`) — der Test musste mitbewusst umgeschrieben werden.
+
+**B — Das Gateway hat UNIQUE (scope, priority).** Ein Tausch 0↔1 ist sequentiell nicht auflösbar.
+`reorderWithinGroup` vergibt lückenlose 0..n-1, also genau die kollidierenden Einzel-PUTs. Das
+Datei-Schema hat nur `CREATE INDEX idx_rules_priority` (kein UNIQUE) — deshalb funktioniert
+Drag&Drop lokal einwandfrei und bricht erst am Gateway. **Keine Stelle im Repo kannte die
+Constraint:** kein Typ definiert eine Priority-Range, `rejectionReason` prüft Priority nicht, und
+der Mock-Gateway hat sie nicht simuliert. Ein Swap im Smoke-Test wäre grün durchgelaufen.
+
+**C — Die Begründung existierte im Store, aber nicht auf dem Bildschirm.** `syncStatus.error` und
+`syncStatus.rejected` hatten laut grep keinen einzigen Consumer in irgendeiner `.tsx`; gerendert
+wurde nur `pending`, die Zahl.
+
+**D — Keine API-Diff.** `openDbDiff` ist an `activeDb` gebunden (im API-Modus `null`), der Button
+war mit `{!isApi && …}` gar nicht gerendert. Ursache tiefer: es gibt zwei Module namens
+`diffRules` mit unvereinbaren Rückgabetypen — `diff.ts` (Feld-Detail, das der DiffModal rendert)
+und `sync.ts` (Call-Liste).
+
+**C′ — Targets und Fallbacks werden unterschiedlich validiert.** Der 400 lautet
+`fallbacks[1] "Test/prefix/model" is invalid: must use a known provider prefix` — das ist der
+*Fallback*. Die offizielle Doku nennt für Targets gar keine Provider-Whitelist, für Fallbacks nur
+die Form `provider/model`. Die serverseitige Prefix-Prüfung der Fallbacks ist **nirgends
+dokumentiert**.
+
+### Entscheidungen, die der Nutzer getroffen hat
+- Scope-Wechsel werden gekoppelt (Create und Delete als eine Einheit)
+- Fehlerdetails per Klick auf die Statuszeile, in einem Modal
+- Die API-Diff bekommt einen „Übertragen"-Button
+- **Das Studio blockiert keine Provider** — das Gateway entscheidet
+
+### What changed
+- [x] `mock-bifrost.mjs`: `priorityTaken()` simuliert UNIQUE (scope, priority) in POST und PUT.
+      Nur wenn `body.priority` im Body steht — sonst würde die Constraint bei jedem Update ohne
+      Priority-Change greifen. Fehlerform an der realen Gateway-Form, damit `readError` sie liest.
+- [x] `sync.ts`: `RuleDiff.moves` (gekoppelte Scope-Wechsel), `ApplyResult.failures` (pro
+      Änderung), `applyDiff` mit try/catch je Operation statt je Batch.
+- [x] `sync.ts`: `planPriorityPhases` — Regeln, deren *Ziel*-priorität belegt ist, weichen auf
+      Werte oberhalb aller bekannten aus. Eine Regel auf eine freie Priorität braucht das nicht und
+      bleibt ein einfacher PUT. Kann eine Regel nicht ausweichen, wird sie aus Phase 2 ausgeschlossen
+      und gemeldet, statt halb angewendet zu werden.
+- [x] `sync.ts`: `providerWarnings` — **nicht blockierend**, gegen `modelCatalog`. Im API-Modus
+      stammt der Katalog aus `builtInCatalog()`, einer statischen Liste im Repo, nicht vom Gateway.
+      Deshalb ist der Text als Hinweis formuliert und blockiert nichts.
+- [x] `useStore.ts`: `SyncStatus.failures`, `openApiDiff`/`previewApiDiff`, `syncFailuresOpen`,
+      `DiffView.hints`. `refreshFromApi()` läuft **nur** bei sauberem Lauf — sonst verwürfe sie die
+      Edits, die das Gateway gerade abgelehnt hat.
+- [x] `TopBar.tsx`: Diff-Button in beiden Modi, Statuszeile im Fehlerfall als Button.
+- [x] `SyncFailureModal.tsx` (neu), `DiffModal.tsx` rendert `hints`.
+
+### Zwei Fehler, die die Validierung gefunden hat
+- **Datenverlust beim Teil-Erfolg:** In einem ersten Entwurf stand `get().refreshFromApi()` statt
+  `if (!pending) get().refreshFromApi()`. `refreshFromApi` baut den Canvas aus dem Gateway neu auf
+  — bei `pending > 0` hätte es genau die Edits verworfen, die gerade nicht übertragen wurden. Der
+  Test „behält den Canvas-Zustand" sichert das jetzt ab.
+- **Testfehler, der sich als Codefehler tarnte:** Der erste Priority-Test griff mit `nodes[0]` und
+  `nodes[1]` auf — das sind Trigger *und* Target, nicht zwei Trigger. Die Debug-Ausgabe
+  (`CANVAS [[r1, 1], [r2, 1]]`) zeigte zwei Regeln auf Priorität 1. Tests suchen die Trigger jetzt
+  über `data.ruleId`.
+
+### Der Mock war der Grund, warum das nie gefunden wurde
+`mock-bifrost.mjs` speicherte Regeln in einem flachen `Map` und prüfte bei PUT nur 404, scope und
+Gewichtssumme. Ein Priority-Swap lieferte zwei erfolgreiche PUTs und lief grün. Mit der Simulation
+liefert genau derselbe Aufruf den 500er, den das echte Gateway schickt — verifiziert durch
+Deaktivieren des Dodgings: `27/28`, mit der Meldung des Users wörtlich.
+
+Validation: `npm test` 106/106 grün, `npx tsc --noEmit` fehlerfrei, `npm run build` erfolgreich,
+`gateway-smoke` 28/28. Regressionsnachweis: ohne `sync.ts` fallen die Kern-Tests in `sync.test.ts`
+und `syncNow.test.ts` um; ohne Dodging fällt der Smoke-Check mit exakter 500er-Meldung.

@@ -70,6 +70,8 @@ export function TopBar() {
   const saveToDb = useStore((s) => s.saveToDb);
   const downloadDb = useStore((s) => s.downloadDb);
   const openDbDiff = useStore((s) => s.openDbDiff);
+  const openApiDiff = useStore((s) => s.openApiDiff);
+  const openSyncFailures = useStore((s) => s.openSyncFailures);
   const setTemplatesOpen = useStore((s) => s.setTemplatesOpen);
   const setDashboardOpen = useStore((s) => s.setDashboardOpen);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
@@ -194,13 +196,21 @@ export function TopBar() {
             {isApi ? (
               <>
                 <span className={`h-1.5 w-1.5 rounded-full ${syncStatus.state === 'error' ? 'bg-neon-red' : syncStatus.state === 'syncing' ? 'bg-neon-amber' : dirty ? 'bg-neon-amber' : 'bg-neon-green'}`} />
-                {syncStatus.state === 'syncing'
-                  ? 'synchronisiert…'
-                  : syncStatus.state === 'error'
-                    ? `${syncStatus.pending} nicht übertragen`
-                    : dirty
-                      ? 'Änderungen ausstehend'
-                      : 'synchronisiert'}
+                {syncStatus.state === 'error' ? (
+                  // The number alone is not actionable — open the list that names
+                  // the rules and the gateway's own reason for each.
+                  <button type="button" onClick={openSyncFailures} className="hover:text-ink underline underline-offset-2 decoration-dotted">
+                    {syncStatus.pending} nicht übertragen
+                  </button>
+                ) : (
+                  <span>
+                    {syncStatus.state === 'syncing'
+                      ? 'synchronisiert…'
+                      : dirty
+                        ? 'Änderungen ausstehend'
+                        : 'synchronisiert'}
+                  </span>
+                )}
               </>
             ) : (
               <>
@@ -257,11 +267,15 @@ export function TopBar() {
           </Button>
         )}
 
-        {!isApi && (
-          <Button variant="ghost" size="sm" onClick={openDbDiff} title="Show unsaved changes vs the database">
-            <GitCompare size={14} /> <span className="hidden 2xl:inline">Diff</span>
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void (isApi ? openApiDiff() : openDbDiff())}
+          disabled={isApi && busy}
+          title={isApi ? 'Show what Übertragen would write to the gateway' : 'Show unsaved changes vs the database'}
+        >
+          <GitCompare size={14} /> <span className="hidden 2xl:inline">Diff</span>
+        </Button>
 
         <Button variant="ghost" size="sm" onClick={() => setDashboardOpen(true)} title="Open dashboard">
           <BarChart3 size={14} /> <span className="hidden 2xl:inline">Dashboard</span>

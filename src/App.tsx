@@ -21,6 +21,7 @@ import { RightPanel } from '@/components/layout/RightPanel';
 import { FlowCanvas } from '@/components/canvas/FlowCanvas';
 import { RuleChainWizard } from '@/components/wizard/RuleChainWizard';
 import { DiffModal } from '@/components/panels/DiffModal';
+import { SyncFailureModal } from '@/components/panels/SyncFailureModal';
 import { TemplateGallery } from '@/components/panels/TemplateGallery';
 import { DashboardPanel } from '@/components/panels/DashboardPanel';
 import { SettingsPanel } from '@/components/panels/SettingsPanel';
@@ -88,6 +89,7 @@ export default function App() {
 
       <RuleChainWizard />
       <DiffModal />
+      <SyncFailureModal />
       <TemplateGallery />
       <Modal open={dashboardOpen} onClose={() => setDashboardOpen(false)} title="Dashboard" subtitle="Workspace overview and validation health" width="w-[min(980px,92vw)]">
         <DashboardPanel />

@@ -14,9 +14,11 @@
  * losing state. Note the suffix differs per prefix: the legacy route is
  * `/api/governance/routing-rules`, NOT `/api/governance/rules`.
  *
- * It reproduces the two behaviours that actually broke things in practice:
+ * It reproduces the behaviours that actually broke things in practice:
  *   - `PUT` replaces the whole rule (targets included), it does not merge
  *   - the update schema has no `scope` — sending one is rejected
+ *   - `(scope, priority)` is UNIQUE — a naive priority swap collides with itself
+ *     and fails, so a reordering only survives here if it dodges first
  *
  * Usage:
  *   node .claude/skills/gateway-smoke/scripts/mock-bifrost.mjs [--port 8080] [--token secret]
@@ -53,6 +55,23 @@ const readBody = (req) =>
 
 const weightSumOk = (targets) => Math.abs((targets ?? []).reduce((a, t) => a + Number(t.weight ?? 0), 0) - 1) < 1e-6;
 
+/**
+ * The real gateway has UNIQUE (scope, priority): two rules cannot hold the same
+ * priority within a scope. The studio side only learned this from a 500 on the
+ * first priority swap — without this simulation every reordering looks healthy
+ * and the bug stays invisible.
+ */
+const priorityTaken = (scope, priority, exceptId) =>
+  [...rules.values()].some(
+    (r) => r.id !== exceptId && r.scope === scope && r.priority === priority,
+  );
+
+const priorityConflict = (scope, priority) => ({
+  error: {
+    message: `Failed to update routing rule in database: routing rule with priority ${priority} already exists for scope '${scope}'`,
+  },
+});
+
 async function parseJson(req, res) {
   try {
     return JSON.parse(await readBody(req));
@@ -73,6 +92,9 @@ async function handleCollection(req, res) {
     }
     if (!weightSumOk(body.targets)) {
       return send(res, 400, { error: { message: 'target weights must sum to 1' } });
+    }
+    if (priorityTaken(body.scope, body.priority)) {
+      return send(res, 500, priorityConflict(body.scope, body.priority));
     }
     seq += 1;
     const rule = { ...body, id: `srv-${seq}` };
@@ -96,6 +118,11 @@ async function handleItem(req, res, id) {
     }
     if (body.targets && !weightSumOk(body.targets)) {
       return send(res, 400, { error: { message: 'target weights must sum to 1' } });
+    }
+    // Only when the body actually carries a priority — the constraint must not
+    // fire on updates that leave the priority alone.
+    if (body.priority != null && priorityTaken(current.scope, body.priority, id)) {
+      return send(res, 500, priorityConflict(current.scope, body.priority));
     }
     // Replaces, not merges. That is the documented behaviour being tested.
     const next = { ...current, ...body };

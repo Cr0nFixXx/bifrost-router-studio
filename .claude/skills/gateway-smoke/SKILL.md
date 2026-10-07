@@ -1,6 +1,6 @@
 ---
 name: gateway-smoke
-description: "Verifiziert die API-Modus-Anbindung gegen ein echtes Round-Trip: startet ein Mock-Gateway plus die lokale Bridge und fährt 26 Checks durch. Nutze diesen Skill immer wenn an src/lib/bifrostApi.ts, src/lib/sync.ts, scripts/local-bridge.mjs oder am API-Connect etwas geändert wurde, oder wenn jemand fragt ob der Sync zum Gateway noch funktioniert, ob die Bridge noch durchlässt oder ob die API-Constraints noch gelten. Auch bei 'teste die API anbindung', 'smoke test gateway', 'läuft der sync noch'."
+description: "Verifiziert die API-Modus-Anbindung gegen ein echtes Round-Trip: startet ein Mock-Gateway plus die lokale Bridge und fährt 28 Checks durch. Nutze diesen Skill immer wenn an src/lib/bifrostApi.ts, src/lib/sync.ts, scripts/local-bridge.mjs oder am API-Connect etwas geändert wurde, oder wenn jemand fragt ob der Sync zum Gateway noch funktioniert, ob die Bridge noch durchlässt oder ob die API-Constraints noch gelten. Auch bei 'teste die API anbindung', 'smoke test gateway', 'läuft der sync noch'."
 ---
 
 # Gateway-Smoketest
@@ -56,6 +56,7 @@ Dauert etwa 15 Sekunden. Braucht Ports 8080 (Mock) und 8787 (Bridge) frei; beleg
 | 16 | Bridge aus → status 0 | Netzwerkfehler ist nicht 401 |
 | 17 | WriteShape ohne `id`/`created_at`/`updated_at` | Round-Trip eines GET-Objekts würde scheitern |
 | 18 | Whitelist lehnt `/api/config` mit 403 ab | sonst hätte der Token mehr Reichweite als gedacht |
+| 19 | Prioritäts-Tausch übersteht UNIQUE (scope, priority) | ein Swap 0↔1 ist sequentiell nicht auflösbar; ohne Ausweichen gibt der Mock exakt den 500er, den das echte Gateway liefert |
 
 ## Wann laufen
 

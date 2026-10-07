@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.9 — Build 26100715
+
+- **One bad rule no longer blocks the rest of the sync.** A rule the gateway refused used to abort
+  the whole batch, and the count of everything that never even got attempted was reported as
+  failures. Now every change is written independently — edit three rules where one has a dead
+  provider and the other two land. The reason is no longer a number you cannot act on: click the
+  status line and get the rule name, the operation, and the gateway's own wording.
+- **Reordering rules works against the gateway.** The gateway keeps `(scope, priority)` unique, so
+  swapping two rules' priorities was impossible to write sequentially — it answered 500 and the
+  swap was lost. Rules whose target priority is occupied now step out of the way first. Drag-and-drop
+  worked locally before because the file schema has no such constraint; only the gateway does.
+- **Changing a rule's scope can no longer lose it.** The create and the delete are issued as one
+  unit, so a refused create leaves the old rule standing instead of deleting it without a replacement.
+- **The diff works in gateway mode.** The Diff button was not rendered at all there, so there was no
+  way to see what a sync would write before running it. It now shows the field-level diff and, for
+  rules the model catalog does not know, a non-blocking hint above it.
+- **Provider hints, not a whitelist.** The studio still does not block a rule for naming a provider
+  it has not heard of — that decision belongs to the gateway. You get a hint before the push and the
+  gateway's reason after it.
+
 ## 0.2.9 — Build 26100704
 
 - **Synchronize actually writes.** In API mode the sync compared the gateway against its own

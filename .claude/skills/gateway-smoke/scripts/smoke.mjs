@@ -100,7 +100,7 @@ try {
 // point — a smoke test against a reimplementation proves nothing.
 const { createServer } = await import('vite');
 vite = await createServer({ root: REPO, server: { middlewareMode: true }, logLevel: "silent" });
-const { BifrostApi, bridgeTransport, directTransport, toWriteShape } = await vite.ssrLoadModule('/src/lib/bifrostApi.ts');
+const { BifrostApi, bridgeTransport, directTransport, toWriteShape, apiRuleToRouting } = await vite.ssrLoadModule('/src/lib/bifrostApi.ts');
 const { diffRules, applyDiff, diffIsEmpty } = await vite.ssrLoadModule('/src/lib/sync.ts');
 
 const BRIDGE = `http://127.0.0.1:${BRIDGE_PORT}`;
@@ -137,7 +137,7 @@ check('Neue Regel ergibt genau ein POST', () => {
   eq(firstDiff.update.length, 0, 'update-Anzahl');
 });
 
-const createResult = await applyDiff(api, firstDiff);
+const createResult = await applyDiff(api, firstDiff, remote);
 check('POST angewendet ohne Fehler', () => {
   eq(createResult.created, 1, 'created');
   eq(createResult.failed, 0, 'failed');
@@ -160,7 +160,7 @@ check('Geänderte Regel ergibt genau ein PUT', () => {
   assert(changed.update[0].write.targets?.length === 1, 'targets nicht vollständig mitgesendet');
 });
 
-const updateResult = await applyDiff(api, changed);
+const updateResult = await applyDiff(api, changed, remote);
 remote = await api.listRules();
 check('PUT wurde übernommen', () => {
   eq(updateResult.updated, 1, 'updated');
@@ -184,13 +184,17 @@ check('Rein serverseitiges Feld erzeugt keinen Push', () => {
 });
 
 const scopeMove = diffRules([rule({ id: srvId, priority: 42, scope: 'team', scope_id: 't-9' })], remote);
-check('Scope-Wechsel ergibt DELETE + POST statt PUT', () => {
+check('Scope-Wechsel ergibt ein gekoppeltes Move statt PUT', () => {
   eq(scopeMove.update.length, 0, 'update-Anzahl');
-  eq(scopeMove.delete.length, 1, 'delete-Anzahl');
-  eq(scopeMove.create.length, 1, 'create-Anzahl');
+  // Nicht zwei lose Einträge: Create und Delete gehören zusammen, damit ein
+  // abgelehnter Create die alte Regel nicht mitnimmt.
+  eq(scopeMove.moves.length, 1, 'move-Anzahl');
+  eq(scopeMove.moves[0].deleteId, srvId, 'deleteId');
+  eq(scopeMove.create.length, 0, 'create-Anzahl');
+  eq(scopeMove.delete.length, 0, 'delete-Anzahl');
 });
 
-await applyDiff(api, scopeMove);
+await applyDiff(api, scopeMove, remote);
 remote = await api.listRules();
 check('Scope-Wechsel erzeugt eine neue ID', () => {
   eq(remote.length, 1, 'Regelanzahl');
@@ -205,8 +209,41 @@ check('Ungültige Gewichte werden abgewiesen statt gepusht', () => {
   eq(badWeights.update.length, 0, 'update-Anzahl');
 });
 
+// Two global rules at priority 0 and 1. The gateway holds UNIQUE (scope,
+// priority), so a plain sequential swap collides with itself — this only works
+// because applyDiff steps the rules out of the way first.
+await api.createRule({ ...toWriteShape(rule()), name: 'swap-a', priority: 0 });
+await api.createRule({ ...toWriteShape(rule()), name: 'swap-b', priority: 1 });
+remote = await api.listRules();
+const swapA = remote.find((r) => r.name === 'swap-a');
+const swapB = remote.find((r) => r.name === 'swap-b');
+assert(swapA && swapB, `Seed fehlgeschlagen: ${JSON.stringify(remote.map((r) => r.name))}`);
+
+// The canvas still holds every rule — only the two priorities are swapped.
+const swapDiff = diffRules(
+  remote.map((r) => (r.id === swapA.id ? { ...r, priority: 1 } : r.id === swapB.id ? { ...r, priority: 0 } : r)).map(apiRuleToRouting),
+  remote,
+);
+check('Der Tausch erzeugt genau zwei Updates, keine Löschung', () => {
+  eq(swapDiff.update.length, 2, 'update-Anzahl');
+  eq(swapDiff.delete.length, 0, 'delete-Anzahl');
+  eq(swapDiff.create.length, 0, 'create-Anzahl');
+});
+const swapResult = await applyDiff(api, swapDiff, remote);
+const afterSwap = await api.listRules();
+check('Prioritäts-Tausch übersteht UNIQUE (scope, priority)', () => {
+  eq(swapResult.failed, 0, `failed (${swapResult.failures.map((f) => f.message).join('; ')})`);
+  eq(afterSwap.find((r) => r.id === swapA.id)?.priority, 1, 'priority swap-a');
+  eq(afterSwap.find((r) => r.id === swapB.id)?.priority, 0, 'priority swap-b');
+});
+
+// Clean up the seed before the delete check below counts the rules.
+await api.deleteRule(swapA.id);
+await api.deleteRule(swapB.id);
+remote = await api.listRules();
+
 const deleteDiff = diffRules([], remote);
-const deleteResult = await applyDiff(api, deleteDiff);
+const deleteResult = await applyDiff(api, deleteDiff, remote);
 remote = await api.listRules();
 check('Löschen ergibt DELETE und leert das Gateway', () => {
   eq(deleteResult.deleted, 1, 'deleted');

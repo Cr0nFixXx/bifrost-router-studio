@@ -257,4 +257,38 @@ describe('BifrostDb (sql.js)', () => {
     db.replaceAllRules([sampleRule({ id: 'new1' }), sampleRule({ id: 'new2' })]);
     expect(db.listRules().map((r) => r.id)).toEqual(['new1', 'new2']);
   });
+
+  it('keeps the stored query byte-identical while the CEL is unchanged', () => {
+    // The reuse branch, which only exists on Bifrost's own schema — the studio
+    // schema has no `query` column at all. It is the one decision the API path
+    // cannot make, and the only way to notice it is broken is a DB file that
+    // regenerates its query on every save, which no other test would catch.
+    const stored = '{"id":"grp_kept","combinator":"and","rules":[{"id":"r_1","field":"model","operator":"==","value":"gpt-4o"}]}';
+    const raw = new SQL.Database();
+    raw.run(`
+      CREATE TABLE routing_rules (
+        id varchar(255) PRIMARY KEY, config_hash varchar(255), name varchar(255) NOT NULL,
+        description TEXT, enabled numeric NOT NULL DEFAULT true, cel_expression TEXT NOT NULL,
+        fallbacks TEXT, query TEXT, scope varchar(50) NOT NULL, scope_id varchar(255),
+        priority INTEGER NOT NULL DEFAULT 0, created_at datetime NOT NULL,
+        updated_at datetime NOT NULL, chain_rule numeric NOT NULL DEFAULT false
+      );
+      CREATE TABLE routing_targets (rule_id varchar(255) NOT NULL, provider varchar(255), model varchar(255), key_id varchar(255), weight REAL NOT NULL DEFAULT 1);
+    `);
+    raw.run(
+      `INSERT INTO routing_rules
+       (id, config_hash, name, description, enabled, cel_expression, fallbacks, query, scope, scope_id, priority, created_at, updated_at, chain_rule)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['native-1', 'hash-1', 'Native', '', 1, 'model == "gpt-4o"', '[]', stored, 'global', null, 0, '2026-01-01', '2026-01-01', 0],
+    );
+
+    const db = BifrostDb.wrap(raw);
+    db.updateRule('native-1', { name: 'Renamed' });
+    expect(db.listRoutingRulesTableRows()[0].query).toBe(stored);
+
+    // The counterpart: a changed CEL must regenerate it.
+    db.updateRule('native-1', { cel_expression: 'model.contains("haiku")' });
+    expect(db.listRoutingRulesTableRows()[0].query).not.toBe(stored);
+    expect(JSON.parse(db.listRoutingRulesTableRows()[0].query!).rules[0]).toMatchObject({ field: 'model', operator: 'contains' });
+  });
 });

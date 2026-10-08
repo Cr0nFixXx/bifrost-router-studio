@@ -63,7 +63,7 @@ describe('syncNow', () => {
       return fail(405, 'method not allowed');
     });
   });
-  afterEach(() => { vi.unstubAllGlobals(); useStore.setState({ nodes: [], edges: [], rules: [] }); });
+  afterEach(() => { vi.unstubAllGlobals(); useStore.setState({ nodes: [], edges: [] }); });
 
   const connect = async () => {
     await useStore.getState().connectApiDirect('http://gw.test', 'tok');

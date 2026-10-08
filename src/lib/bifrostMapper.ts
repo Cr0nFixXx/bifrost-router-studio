@@ -21,7 +21,8 @@ import type {
   WFNode,
 } from '@/types/workflow';
 import { compileGroup, emitCondition, parseExpression } from './cel';
-import { fallbackToConfigForm, fallbackToParts } from './modelRefs';
+import { fallbackToParts } from './modelRefs';
+import { fallbacksForConfig } from './ruleShape';
 
 const handle = (e: Edge) => (e.sourceHandle ?? 'out').split('.').pop() ?? 'out';
 
@@ -30,7 +31,7 @@ const handle = (e: Edge) => (e.sourceHandle ?? 'out').split('.').pop() ?? 'out';
  * following any number of intermediate nodes (trigger -> complexity -> target,
  * target -> fallback, etc.). Returns ids in discovery order.
  */
-function collectReachable(
+export function collectReachable(
   startId: string,
   edges: Edge[],
   wantKind: string,
@@ -156,10 +157,7 @@ export function rulesToConfig(rules: RoutingRule[], providers: Record<string, un
     governance: {
       routing_rules: rules.map((rule) => ({
         ...rule,
-        fallbacks: rule.fallbacks.map((fb) => {
-          const { key_id } = fallbackToParts(fb);
-          return fallbackToConfigForm(fb, key_id ? keyNames[key_id] : undefined);
-        }).filter(Boolean),
+        fallbacks: fallbacksForConfig(rule.fallbacks, (keyId) => keyNames[keyId]),
       })),
     },
   };

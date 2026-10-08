@@ -14,25 +14,28 @@ npm run build      # tsc --noEmit + vite build
 
 ## Test-Landkarte
 
-115 Tests in 15 Dateien.
+144 Tests in 18 Dateien.
 
 | Testdatei | Tests | Deckt ab |
 | --- | --- | --- |
-| `sync.test.ts` | 17 | `sync.ts` Diff/Apply, `bifrostApi.ts` Konverter, Fehlernormalisierung |
+| `sync.test.ts` | 26 | `sync.ts` Diff/Apply, `bifrostApi.ts` Konverter, Fehlernormalisierung, `providerWarnings` |
+| `ruleShape.test.ts` | 21 | die geteilten Entscheidungen: Gewichts-Schwellen, Normalisierung, `query` je Pfad, Fallback-Pinning |
+| `syncNow.test.ts` | 7 | `useStore` gegen ein Fake-Gateway: Push, No-op, Priority-Tausch, Teilfehler |
+| `rules.test.ts` | 2 | eine Projektion: Reorder und Canvas-Edit sind sofort in `getCanvasRules()` sichtbar |
 | `bifrostApi.test.ts` | 5 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination, `/api/providers`-Shape |
 | `cel.test.ts` | 11 | Parser/Compiler, Visual↔CEL Round-Trip |
 | `bifrostMapper.test.ts` | 9 | Graph ⇄ Rules, `rulesToWorkflow` Hydration |
 | `validation.test.ts` | 9 | Diagnostics (Gewichte, Zyklen, CEL, Scopes) |
 | `gatewayExport.test.ts` | 8 | LiteLLM-YAML, OpenAI-Model-Groups |
 | `diff.test.ts` | 6 | Canvas-vs-DB-Diff |
-| `modelRefs.test.ts` | 11 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
+| `modelRefs.test.ts` | 10 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
 | `ruleOrder.test.ts` | 5 | Priority-Reorder innerhalb einer Scope-Gruppe |
 | `aiDraft.test.ts` | 4 | AI-Draft-Normalisierung und -Validierung |
 | `bifrostQuery.test.ts` | 3 | CEL → react-querybuilder JSON |
 | `customTemplates.test.ts` | 3 | Template-Packs |
 | `io.test.ts` | 2 | Import/Export der Workspace-Formate |
 | `theme.test.ts` | 2 | Theme-Tokens |
-| `db/bifrostDb.test.ts` | 10 | SQL.js-DB (`BifrostDb.ts`): Schema, Rule-CRUD, Priorities, exportBytes, config.json |
+| `db/bifrostDb.test.ts` | 11 | SQL.js-DB (`BifrostDb.ts`): Schema, Rule-CRUD, Priorities, exportBytes, config.json, Query-Wiederverwendung |
 
 Die Tabelle oben summiert genau die Kopfzeile — wenn du eine Testdatei hinzufügst, gehört sie
 hier mit, sonst driftet die Summe.
@@ -42,7 +45,7 @@ hier mit, sonst driftet die Summe.
 Eine Änderung ist fertig, wenn:
 
 1. `npm run typecheck` clean ist (keine `any` in `src/types/*`).
-2. `npm test` grün ist — **115 Tests, 15 Dateien**, keine Auslassungen.
+2. `npm test` grün ist — **144 Tests, 18 Dateien**, keine Auslassungen.
 3. `npm run build` durchläuft.
 4. Für Code, der Routing-Regeln berührt: der Visual↔CEL-Round-Trip hält, und Gewichte summieren
    weiter auf `1`.

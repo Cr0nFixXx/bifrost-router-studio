@@ -4,7 +4,7 @@
  * workspace/config, export (workspace .json / config.json / .xml), and switch
  * or disconnect the current database.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Download,
@@ -47,6 +47,7 @@ import {
   parseWorkspaceXML,
 } from '@/lib/io';
 import { toLiteLLM, toOpenAIModelGroups } from '@/lib/gatewayExport';
+import { workflowToRules } from '@/lib/bifrostMapper';
 import { workflowToMarkdown, workflowToRaster } from '@/lib/canvasExport';
 import { APP_BUILD, APP_VERSION } from '@/lib/version';
 import { THEME_PRESETS, setPreset, setHue, loadThemeMode, setThemeMode, type ThemeMode } from '@/lib/theme';
@@ -88,7 +89,9 @@ export function TopBar() {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const providers = useStore((s) => s.providers);
-  const rules = useStore((s) => s.rules);
+  // Projected from the canvas, not read from a snapshot: exporting after an
+  // edit must write the edited rules to disk.
+  const rules = useMemo(() => workflowToRules(nodes, edges), [nodes, edges]);
   const connectFromFile = useStore((s) => s.connectFromFile);
 
   const [exportOpen, setExportOpen] = useState(false);

@@ -25,7 +25,7 @@ import type {
   RoutingRule,
   RoutingTarget,
 } from '@/types/bifrost';
-import { celToBifrostQueryObject } from '@/lib/bifrostQuery';
+import { fallbacksForApi, queryForWrite } from '@/lib/ruleShape';
 import { mapGatewayModels, type CatalogEntry } from '@/lib/modelRefs';
 
 /** Normalized failure so the UI can tell 401 from 404 from "bridge is down". */
@@ -142,17 +142,6 @@ export function apiTargetToRouting(t: ApiTarget): RoutingTarget {
 }
 
 /**
- * Strip fallbacks down to what the API accepts. The object form is
- * `additionalProperties: false`, so `provider_key_name` (a config.json-only
- * alias) must not survive into a request.
- */
-export function sanitizeFallback(fb: RoutingFallback): RoutingFallback | null {
-  if (typeof fb === 'string') return fb || null;
-  if (!fb || typeof fb !== 'object' || !fb.provider) return null;
-  return { provider: fb.provider, ...(fb.model ? { model: fb.model } : {}), ...(fb.key_id ? { key_id: fb.key_id } : {}) };
-}
-
-/**
  * Canvas rule -> write body. Regenerates `query` from the CEL on every call so
  * the Bifrost dashboard's rule builder never drifts from the canvas.
  */
@@ -167,8 +156,8 @@ export function toWriteShape(rule: RoutingRule): ApiRuleCreate {
     enabled: rule.enabled,
     chain_rule: rule.chain_rule,
     ...(rule.scope_id ? { scope_id: rule.scope_id } : {}),
-    fallbacks: rule.fallbacks.map(sanitizeFallback).filter((f): f is RoutingFallback => f !== null),
-    query: celToBifrostQueryObject(rule.cel_expression) ?? undefined,
+    fallbacks: fallbacksForApi(rule.fallbacks),
+    query: queryForWrite(rule.cel_expression) ?? undefined,
   };
 }
 

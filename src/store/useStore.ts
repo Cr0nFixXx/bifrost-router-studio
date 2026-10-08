@@ -24,7 +24,7 @@ import { PORT_RULES } from '@/types/workflow';
 import { defaultData, newId } from '@/lib/nodeFactory';
 import { validateGraph, type Diagnostic } from '@/lib/validation';
 import { autoLayout, type FlowDirection } from '@/lib/layout';
-import { rulesToWorkflow, workflowToRules } from '@/lib/bifrostMapper';
+import { collectReachable, rulesToWorkflow, workflowToRules } from '@/lib/bifrostMapper';
 import { reorderWithinGroup } from '@/lib/ruleOrder';
 import { diffRules, type RuleDiff as HistoryDiff } from '@/lib/diff';
 import {
@@ -178,7 +178,10 @@ interface StudioState {
   activeRightTab: 'inspector' | 'providers' | 'simulation' | 'rules' | 'history';
 
   /* bifrost data (mirror of the DB) */
-  rules: RoutingRule[];
+  // No `rules` here on purpose. It used to be a connect-time snapshot that
+  // canvas edits never touched, and three call sites wrote priorities back
+  // from it. Every reader projects from the canvas instead — `getCanvasRules()`
+  // is the single path, so nothing can go stale behind its back.
   providers: ProviderConfig[];
   modelCatalog: Array<{ id: string; provider?: string; label?: string; model?: string }>;
 
@@ -356,7 +359,6 @@ async function openApiSession(transport: ApiTransport, label: string): Promise<v
       apiLabel: label,
       dbFileName: null,
       dbKind: 'api',
-      rules: routingRules,
       providers: [],
       nodes,
       edges: syncChainEdges(nodes, edges),
@@ -382,7 +384,6 @@ function refreshFromApi(): void {
     const routingRules = remote.map(apiRuleToRouting);
     const { nodes, edges } = rulesToWorkflow(routingRules, { dedupeConditions: !store.expertMode });
     useStore.setState({
-      rules: routingRules,
       nodes,
       edges: syncChainEdges(nodes, edges),
       dirty: false,
@@ -501,7 +502,6 @@ export const useStore = create<StudioState>((set, get) => ({
   rightWidth: 420,
   activeRightTab: 'inspector',
 
-  rules: [],
   providers: [],
   modelCatalog: [],
 
@@ -677,7 +677,6 @@ export const useStore = create<StudioState>((set, get) => ({
       dbKind: null,
       nodes: [],
       edges: [],
-      rules: [],
       providers: [],
       modelCatalog: [],
       diagnostics: [],
@@ -702,7 +701,7 @@ export const useStore = create<StudioState>((set, get) => ({
     const rules = activeDb.listRules();
     const providers = activeDb.listProviders();
     const { nodes, edges } = rulesToWorkflow(rules, { dedupeConditions: !get().expertMode });
-    set({ rules, providers, nodes, edges: syncChainEdges(nodes, edges), dirty: false, selectedNodeId: null });
+    set({ providers, nodes, edges: syncChainEdges(nodes, edges), dirty: false, selectedNodeId: null });
     get().fetchModels();
     get().recompute();
   },
@@ -724,7 +723,7 @@ export const useStore = create<StudioState>((set, get) => ({
       // Persist providers edited in the UI.
       for (const p of get().providers) activeDb.upsertProvider(p);
       await cacheDb(activeDb.exportBytes(), get().dbFileName ?? 'bifrost.db');
-      set({ rules: activeDb.listRules(), providers: activeDb.listProviders(), dirty: false, busy: false });
+      set({ providers: activeDb.listProviders(), dirty: false, busy: false });
       get().recompute();
     } catch (err) {
       set({ error: (err as Error).message, busy: false });
@@ -1207,7 +1206,6 @@ export const useStore = create<StudioState>((set, get) => ({
     set({
       nodes,
       edges: syncChainEdges(nodes, get().edges),
-      rules: get().rules.map((r) => ({ ...r, priority: map[r.id] ?? r.priority })),
     });
     get().commit('reorder');
     get().markDirty();
@@ -1250,7 +1248,6 @@ export const useStore = create<StudioState>((set, get) => ({
     set({
       nodes,
       edges: syncChainEdges(nodes, get().edges),
-      rules: get().rules.map((r) => ({ ...r, priority: map[r.id] ?? r.priority })),
     });
     get().commit('reorder');
     get().markDirty();
@@ -1350,7 +1347,6 @@ export const useStore = create<StudioState>((set, get) => ({
     set({
       nodes,
       edges,
-      rules: activeDb ? activeDb.listRules() : rules,
       providers: providers ?? get().providers,
     });
     get().commit('restore');
@@ -1448,21 +1444,11 @@ async function simulate(nodes: WFNode[], edges: Edge[], input: SimInput = DEFAUL
     adj.set(e.source, list);
   });
 
-  const reachable = (startId: string, kind: string): WFNode[] => {
-    const out: WFNode[] = [];
-    const seen = new Set<string>([startId]);
-    const queue = [...(adj.get(startId) ?? [])];
-    while (queue.length) {
-      const id = queue.shift()!;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const node = nodes.find((n) => n.id === id);
-      if (!node) continue;
-      if (node.data.kind === kind) out.push(node);
-      else queue.push(...(adj.get(id) ?? []));
-    }
-    return out;
-  };
+  /** The one traversal, in node form — `bifrostMapper` owns the algorithm. */
+  const reachable = (startId: string, kind: string): WFNode[] =>
+    collectReachable(startId, edges, kind, nodes)
+      .map((id) => nodes.find((n) => n.id === id))
+      .filter((n): n is WFNode => !!n);
 
   const pathTo = (startId: string, endId: string): WFNode[] => {
     const queue: Array<{ id: string; path: string[] }> = [{ id: startId, path: [startId] }];

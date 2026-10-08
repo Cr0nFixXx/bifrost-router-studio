@@ -17,6 +17,12 @@
       platzieren, nicht skalieren.
 
 ### Priorität mittel
+- [ ] **`query` mit deterministischen ids erzeugen** — `ruleShape.queryForWrite` mintet bei jedem
+      Aufruf neue ids (`grp_…`, `r_…`). Deshalb schließt `sync.ts:97` das Feld aus dem
+      Write-Fingerprint aus. Mit stabilen ids aus Feld/Op/Wert fiele der Ausschluss weg. **Nicht
+      blind umsetzen:** es ändert den Payload, den das Gateway-Dashboard bekommt, also einen
+      dokumentierten Vertrag. Erst gegen ein echtes Gateway prüfen, ob das Dashboard die
+      wiederverwendeten ids akzeptiert.
 - [ ] **Read-only SQL-Abfrager** im SQL Browser, hinter einer Statement-Allowlist. Power-User-Frage.
 - [ ] **Snapshots pro Projekt** — Snapshots existieren, sind aber global und nicht an ein
       Nutzerprojekt gebunden.

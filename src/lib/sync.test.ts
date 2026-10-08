@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiRule, RoutingRule } from '@/types/bifrost';
 import { apiRuleToRouting, toWriteShape } from '@/lib/bifrostApi';
-import { applyDiff, diffIsEmpty, diffRules, planPriorityPhases, rejectionReason, toUpdateShape } from '@/lib/sync';
+import { applyDiff, diffIsEmpty, diffRules, planPriorityPhases, providerWarnings, rejectionReason, toUpdateShape } from '@/lib/sync';
 
 function rule(patch: Partial<RoutingRule> = {}): RoutingRule {
   return {
@@ -218,5 +218,34 @@ describe('planPriorityPhases', () => {
   it('does not dodge a rule that already holds its target', () => {
     const updates = diffRules([rule({ name: 'Renamed' })], swapRemote).update;
     expect(planPriorityPhases(updates, swapRemote).dodge).toEqual([]);
+  });
+});
+describe('providerWarnings', () => {
+  const catalog = [{ provider: 'openai' }];
+
+  it('says nothing when the catalog is empty', () => {
+    // The contract, not an accident: no catalog means no claim.
+    expect(providerWarnings([rule({ fallbacks: ['narr/`anderer`'] })], [])).toEqual([]);
+  });
+
+  it('names an unknown target provider', () => {
+    const out = providerWarnings([rule({ targets: [{ provider: 'vercel', model: 'x', weight: 1 }] })], catalog);
+    expect(out).toHaveLength(1);
+    expect(out[0].reason).toContain('vercel');
+    expect(out[0].reason).toContain('steht nicht im Modell-Katalog');
+  });
+
+  it('names an unknown fallback provider from the compact string form', () => {
+    const out = providerWarnings([rule({ fallbacks: ['narrara/gpt-4o'] })], catalog);
+    expect(out[0].reason).toContain('narrara');
+  });
+
+  it('names an unknown provider from the pinned object form', () => {
+    const out = providerWarnings([rule({ fallbacks: [{ provider: 'narrara', model: 'gpt-4o', key_id: 'k-1' }] })], catalog);
+    expect(out[0].reason).toContain('narrara');
+  });
+
+  it('stays quiet when every provider is in the catalog', () => {
+    expect(providerWarnings([rule({ fallbacks: ['openai/gpt-4o'] })], catalog)).toEqual([]);
   });
 });

@@ -32,6 +32,7 @@ import {
   providerOptions,
   stripProviderPrefix,
 } from '@/lib/modelRefs';
+import { weightSum } from '@/lib/ruleShape';
 import {
   compileGroup,
   newCondition,
@@ -604,7 +605,7 @@ function TargetEditor({ node }: { node: any }) {
             <button className="text-ink-faint hover:text-neon-red px-1" onClick={() => removeRoute(i)}>×</button>
           </div>
         ))}
-        <div className="text-[10px] text-ink-faint">Weights should sum to 1.0 · current {routes.reduce((a: number, r: any) => a + Number(r.weight ?? 0), 0).toFixed(2)}</div>
+        <div className="text-[10px] text-ink-faint">Weights should sum to 1.0 · current {weightSum(routes).toFixed(2)}</div>
       </div>
     </div>
   );

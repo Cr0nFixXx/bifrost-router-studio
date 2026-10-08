@@ -9,6 +9,8 @@ import type { FallbackNodeData, WFNode } from '@/types/workflow';
 import { validateCEL } from './cel';
 import { isRuleUid } from './ruleIds';
 import { fallbackFromParts, fallbackToParts } from './modelRefs';
+import { collectReachable } from './bifrostMapper';
+import { WEIGHT_WARN_EPSILON, weightSum } from './ruleShape';
 
 export type DiagnosticLevel = 'error' | 'warning' | 'info';
 
@@ -42,32 +44,15 @@ function detectCycle(nodes: WFNode[], edges: Edge[]): boolean {
   return cyclic;
 }
 
-function collectReachable(startId: string, edges: Edge[], nodesById: Map<string, WFNode>, kind: WFNode['data']['kind']): WFNode[] {
-  const adj = new Map<string, string[]>();
-  edges.forEach((e) => {
-    if (e.sourceHandle === 'chainout' || e.targetHandle === 'chainin') return;
-    const list = adj.get(e.source) ?? [];
-    list.push(e.target);
-    adj.set(e.source, list);
-  });
-  const seen = new Set<string>([startId]);
-  const queue = [...(adj.get(startId) ?? [])];
-  const out: WFNode[] = [];
-  while (queue.length) {
-    const id = queue.shift()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const node = nodesById.get(id);
-    if (!node) continue;
-    if (node.data.kind === kind) out.push(node);
-    else queue.push(...(adj.get(id) ?? []));
-  }
-  return out;
-}
-
 export function validateGraph(nodes: WFNode[], edges: Edge[]): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  /** The one traversal, in node form — `bifrostMapper` owns the algorithm. */
+  const reachable = (startId: string, kind: WFNode['data']['kind']): WFNode[] =>
+    collectReachable(startId, edges, kind, nodes)
+      .map((id) => byId.get(id))
+      .filter((n): n is WFNode => !!n);
+
 
   const triggers = nodes.filter((n) => n.data.kind === 'trigger');
   const targets = nodes.filter((n) => n.data.kind === 'target');
@@ -79,7 +64,7 @@ export function validateGraph(nodes: WFNode[], edges: Edge[]): Diagnostic[] {
   // 1) Triggers need at least one target. Targets can be direct or reachable
   // through intermediate router/logic nodes.
   triggers.forEach((t) => {
-    const outs = collectReachable(t.id, edges, byId, 'target');
+    const outs = reachable(t.id, 'target');
     if (outs.length === 0) {
       diags.push({
         id: `no-target-${t.id}`,
@@ -90,8 +75,11 @@ export function validateGraph(nodes: WFNode[], edges: Edge[]): Diagnostic[] {
       });
     } else {
       // weight sum check
-      const sum = outs.reduce((acc, n) => acc + (((n.data as any).routes?.length ? (n.data as any).routes.reduce((a: number, r: any) => a + Number(r.weight ?? 0), 0) : ((n.data as any).weight ?? 0))), 0);
-      if (Math.abs(sum - 1) > 0.001) {
+      const sum = weightSum(outs.map((n) => {
+        const d = n.data as { routes?: Array<{ weight?: number }>; weight?: number };
+        return { weight: d.routes?.length ? weightSum(d.routes) : d.weight };
+      }));
+      if (Math.abs(sum - 1) > WEIGHT_WARN_EPSILON) {
         diags.push({
           id: `weight-${t.id}`,
           level: 'warning',
@@ -104,7 +92,7 @@ export function validateGraph(nodes: WFNode[], edges: Edge[]): Diagnostic[] {
 
     // Bifrost fallbacks are rule-level (`routing_rules.fallbacks`), not
     // target-level. Warn once per rule if no fallback is reachable.
-    const fb = collectReachable(t.id, edges, byId, 'fallback');
+    const fb = reachable(t.id, 'fallback');
     if (outs.length > 0 && fb.length === 0) {
       diags.push({
         id: `no-fb-${t.id}`,

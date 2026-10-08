@@ -1,6 +1,23 @@
 # Changelog
 
-## 0.2.9 — Build 26100722
+## 0.2.9 — Build 26100803
+
+- **One weight rule, one fallback rule, one query rule.** The same three decisions — when a weight
+  sum counts as broken, which key a pinned fallback carries, and when the dashboard's `query` JSON
+  is regenerated — were each made in four places that had drifted apart. A weight sum of `0.9995` was
+  a hard rejection at the gateway, a warning on the canvas, and silently rewritten by the AI path.
+  They now live in one module, and each of them has tests.
+
+## 0.2.9 — Build 26100802
+
+- **Exporting after an edit no longer writes the pre-edit rules.** The LiteLLM and OpenAI model-group
+  exports read a connect-time snapshot of the rules, so renaming a rule on the canvas and exporting
+  produced a file with the old name in it. Exports now read the canvas.
+- **Dragging a rule's priority no longer wrote back stale priorities.** Two reorder paths mapped over
+  that same snapshot, which meant the panel updated while the value the gateway received came from
+  whenever the studio had last connected. Both now reorder the canvas itself.
+
+### Earlier in 0.2.9 — Build 26100722
 
 - **The target and fallback dropdowns load your actual providers.** In gateway mode the studio ran
   off a hardcoded list of twelve vendor models, so `vercel`, `ocgoo`, `NaraRouter` and friends were

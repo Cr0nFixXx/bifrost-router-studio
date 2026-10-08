@@ -17,6 +17,20 @@ of the project and does not describe what the app does for users.
 | Ongoing state, gotchas, do-not-forget | [`HANDOFF.md`](./HANDOFF.md) |
 | Bifrost's own semantics | [routing-rules docs](https://docs.getbifrost.ai/providers/routing-rules) |
 
+## Agent skills
+
+### Issue tracker
+
+Issues liegen in den GitHub Issues dieses Repos (`gh` CLI). Siehe `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Die fünf kanonischen Rollen, Label-Text == Name. Siehe `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` im Repo-Root. Siehe `docs/agents/domain.md`.
+
 ## What this project is
 
 A **visual planner and editor for Bifrost AI Gateway routing rules**, browser-first. Mental model:
@@ -57,8 +71,17 @@ Supported variables match Bifrost: `model`, `provider`, `request_type`, `headers
 Operators: `== != > < >= <= in startsWith endsWith contains matches`, combined with `&& || !`.
 **`src/lib/cel.ts` is the authority for this list** — if it disagrees with the code here, the code wins.
 
-## Custom nodes / edges
+## Rule shape
 
+`src/lib/ruleShape.ts` owns the decisions every path into a `RoutingRule` has to make the same way:
+`WEIGHT_GATE_EPSILON` / `WEIGHT_WARN_EPSILON` / `weightSum` / `normalizeWeights`,
+`queryForWrite` / `queryForRow`, `fallbacksForApi` / `fallbacksForConfig` / `fallbacksFromConfig`.
+Do not reintroduce a weight threshold, a `query` regeneration or a key-pinning rule in a caller —
+each was implemented in four places and the copies had drifted. Mappers stay in their own modules
+(`apiRuleToRouting` transport, `nativeRowToRule` SQL, `normalizeAiDraft` untrusted input); they call
+in here for the decision.
+
+## Custom nodes / edges
 - All nodes render through `canvas/nodes/BaseNode.tsx` (frosted card, accent bar, directional
   ports, diagnostic ring). Node bodies live in `nodes/*`.
 - Register new node types in **two** places: `FlowCanvas.tsx` (`nodeTypes`) and the drag palette
@@ -100,9 +123,12 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
 **Writing to the gateway**
 - **An empty diff is not a success signal.** `syncNow` reports `idle` and a fresh `lastSyncedAt`
   whether it wrote ten rules or zero, so "the chip is green" proves nothing about the gateway.
-  Verify a write by re-reading the panel. The diff source must be `getCanvasRules()` — `state.rules`
-  is a snapshot taken at connect time and is **not** updated by canvas edits, so diffing against it
-  compares the gateway with itself and silently pushes nothing.
+  Verify a write by re-reading the panel.
+- **There is no `state.rules` — do not add one back.** The store used to hold a connect-time snapshot
+  beside the canvas, and diffing or reading it compared the gateway with itself, or exported the
+  snapshot to disk while the canvas said something else. Every reader projects from the canvas now:
+  `getCanvasRules()` in the store, `workflowToRules(nodes, edges)` in components. A cache would
+  reintroduce exactly the bug, with a second way to go stale.
 - **The gateway holds UNIQUE (scope, priority).** A swap of 0 and 1 cannot be written sequentially —
   the first rule takes the priority the second still holds, and the gateway answers 500. Only rules
   whose *target* priority is occupied need `planPriorityPhases` to step them out of the way first;

@@ -16,7 +16,8 @@
  */
 import { openDatabase, type Database } from '@/lib/sqljs/loader';
 import { celToBifrostQuery, isUsableBifrostQuery } from '@/lib/bifrostQuery';
-import { fallbackFromParts, fallbackToConfigForm, fallbackToParts } from '@/lib/modelRefs';
+import { fallbackToParts } from '@/lib/modelRefs';
+import { fallbacksForConfig, fallbacksFromConfig, queryForRow } from '@/lib/ruleShape';
 import type { SqlValue } from 'sql.js';
 import type {
   BifrostConfig,
@@ -412,7 +413,7 @@ export class BifrostDb {
   private createNativeRule(rule: RoutingRule, old?: NativeRuleRow): RoutingRule {
     const now = new Date().toISOString();
     const cols = this.columns('routing_rules');
-    const query = old && old.cel_expression === rule.cel_expression && isUsableBifrostQuery(old.query) ? (old.query ?? null) : celToBifrostQuery(rule.cel_expression);
+    const query = queryForRow(rule.cel_expression, old?.cel_expression ?? null, old?.query);
     const values: Record<string, SqlValue> = {
       id: rule.id,
       config_hash: old?.config_hash ?? '',
@@ -448,7 +449,7 @@ export class BifrostDb {
       enabled: next.enabled ? 1 : 0,
       cel_expression: next.cel_expression,
       fallbacks: JSON.stringify(next.fallbacks ?? []),
-      query: row && previous.cel_expression === next.cel_expression && isUsableBifrostQuery(row.query) ? (row.query ?? null) : celToBifrostQuery(next.cel_expression),
+      query: queryForRow(next.cel_expression, previous.cel_expression, row?.query),
       scope: next.scope,
       scope_id: next.scope_id ?? null,
       priority: next.priority,
@@ -713,7 +714,7 @@ export class BifrostDb {
       enabled: row.enabled ? 1 : 0,
       cel_expression: row.cel_expression || 'true',
       fallbacks: row.fallbacks ?? '[]',
-      query: isUsableBifrostQuery(row.query) ? row.query : celToBifrostQuery(row.cel_expression),
+      query: queryForRow(row.cel_expression || 'true', row.cel_expression || 'true', row.query),
       scope: row.scope || 'global',
       scope_id: row.scope_id ?? null,
       priority: Number(row.priority ?? 0),
@@ -815,10 +816,7 @@ export class BifrostDb {
     const names = this.keyNameById();
     const rules = this.listRules().map((rule) => ({
       ...rule,
-      fallbacks: rule.fallbacks.map((fb) => {
-        const { key_id } = fallbackToParts(fb);
-        return fallbackToConfigForm(fb, key_id ? names.get(key_id) : undefined);
-      }),
+      fallbacks: fallbacksForConfig(rule.fallbacks, (keyId) => names.get(keyId)),
     }));
     return { providers, governance: { routing_rules: rules } };
   }
@@ -828,12 +826,7 @@ export class BifrostDb {
     for (const raw of config.governance?.routing_rules ?? []) {
       const rule: RoutingRule = {
         ...raw,
-        fallbacks: raw.fallbacks.map((fb) => {
-          if (!fb || typeof fb !== 'object') return fb;
-          const { provider, model } = fallbackToParts(fb);
-          const keyId = fb.key_id ?? (fb.provider_key_name ? keyIds.get(fb.provider_key_name) : undefined);
-          return fallbackFromParts(provider, model, keyId);
-        }).filter((fb) => fb !== ''),
+        fallbacks: fallbacksFromConfig(raw.fallbacks, (name) => keyIds.get(name)),
       };
       this.createRule(rule);
     }

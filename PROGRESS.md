@@ -1350,3 +1350,130 @@ der Push durchging.
 - `gateway-smoke`: **31/31** (vorher 28). Der Mock hat die beiden Fallen eingebaut, die den echten
   Bug ausgelöst haben — ein Modell mit `owned_by: "meta"` und eine Fünf-Zeilen-Seite. Der
   Query-String-Bug der Bridge fiel genau deshalb auf.
+
+## v0.2.9 Build 26100802 — Eine Projektion: `state.rules` entfernt ✅
+
+### Auslöser
+Ein Architektur-Review (Kandidaten A–E, see `/tmp/architecture-review-20261007-232945.html`)
+zeigte, dass die letzten acht Commits ausnahmslos Sync-/API-Fixes waren — jeder davon ein
+Einzelfall an einer anderen Stelle derselben Logik. Das war kein Zufall, sondern ein fehlender
+Seam. Der erste Kandidat daraus war die Frage, ob `rules` im Store überhaupt etwas hält.
+
+### Was wirklich kaputt war
+`rules: RoutingRule[]` war ein **Connect-Snapshot** neben dem Canvas. Canvas-Edits zogen nicht nach.
+`syncNow` diffe deshalb korrekt `getCanvasRules()` — das war der Fix aus `4ce1938` („Synchronisieren
+schrieb nichts"). Drei weitere Call-Sites vertrauten dem Snapshot trotzdem:
+
+- **`TopBar.tsx:91` — der teuerste Fund.** `toLiteLLM` und `toOpenAIModelGroups` bekamen
+  `useStore((s) => s.rules)`. Regel auf dem Canvas umbenennen, LiteLLM-YAML exportieren → die Datei
+  enthält den **alten** Namen. Stiller Datenverlust beim Export.
+- **`reorderRulePriority` (:1210)** und **`reorderRulesByIds` (:1253)** schrieben beide
+  `rules: get().rules.map(r => ({ ...r, priority: map[r.id] ?? r.priority }))` zurück. Die Priority
+  kommt aus `data.priority` am Trigger-Knoten — der Snapshot-Write war reine Buchhaltung, die
+  zufällig den Wert zurücksetzte, den der Canvas gerade gesetzt hatte.
+- **`RulesPanel.tsx:37`** `rules.length ? rules : storedRules` — der Fallback ist unerreichbar: jeder
+  Pfad, der `rules` füllte, baute die Nodes aus genau diesen Rules, also ist die Canvas-Projektion
+  leer ⟺ `rules` leer.
+
+### Änderungen
+- [x] `StudioState.rules` entfernt, mit allen neun Schreibstellen (`openApiSession`,
+      `refreshFromApi`, `refreshFromDb`, `saveToDb`, `disconnect`, `applyRuleset`, beide Reorder).
+      Die umgebenden Locals (`routingRules`, `activeDb.listRules()`) bleiben — sie speisen
+      `rulesToWorkflow` bzw. den Config-Export.
+- [x] `TopBar` und `RulesPanel` projizieren jetzt selbst über `workflowToRules(nodes, edges)` —
+      mit `useMemo` auf `[nodes, edges]`. Damit ist der Export-Bug behoben.
+- [x] `syncNow.test.ts:66` `rules: []` entfernt. Kein Verhaltenswechsel, aber unter `strict` ein
+      Excess-Property-Fehler — musste im selben Commit fallen.
+- [x] Neu `src/store/rules.test.ts`: Reorder wirkt sofort in `getCanvasRules()`, und eine
+      Canvas-Edit ist dort sichtbar. Damit ist die Invariante festgenagelt.
+- [x] `CLAUDE.md`: die Gotcha wurde von der Warnung („nimm nicht `state.rules`") auf die
+      Invariante umgeschrieben („es gibt kein `state.rules` — füg es nicht wieder hinzu").
+
+### Bewusst nicht gemacht
+- **Keine Memoization von `workflowToRules`.** ~9 Store-Stellen und 6 Komponenten rufen sie auf, ein
+  reiner BFS über einen Graphen im Speicher. Ein Cache auf `nodes`/`edges` wäre die zweite Sache,
+  die veralten kann — genau der Fehler, den diese Runde beseitigt.
+- **Kein `queryForWrite`-Determinismus** (kommt in Kandidat A): stabile ids würden den
+  `writeFingerprint`-Ausschluss ersetzen, ändern aber den Payload für das Gateway-Dashboard.
+  Verschoben nach `TODO.md`.
+
+### Validierung
+- `npm run typecheck` clean. Die drei erwarteten Fehler (TopBar, RulesPanel, syncNow.test) waren
+  die vollständige Liste der Leser — kein viertes Opfer.
+- Vitest: **117 Tests in 17 Dateien**, grün (vorher 115 in 16 — `syncNow.test.ts` fehlte in der
+  `TESTING.md`-Tabelle, mit ergänzt).
+- `npm run build` erfolgreich.
+- Noch **nicht** manuell geprüft: der Export-Fall im Browser (Canvas-Edit → LiteLLM-YAML → neuer
+  Name in der Datei). Der Test pinnt die Projektion, nicht den Klickpfad.
+
+## v0.2.9 Build 26100803 — `ruleShape`: die geteilten Entscheidungen an einem Ort ✅
+
+### Auslöser
+Direkte Fortsetzung von Build 26100802. Kandidat A aus demselben Review: „Wie wird aus einer Regel
+ein Gateway-Write" war viermal unabhängig implementiert, und drei dieser Entscheidungen waren an
+mehreren Stellen mit **verschiedenen** Ergebnissen belegt.
+
+### Was wirklich kaputt war
+- **Gewichtssummen: drei Schwellen für dieselbe Frage.** `sync.ts:49` wirft bei `>1e-6`,
+  `validation.ts:94` warnt bei `>0.001`, `aiDraft.ts:173` normalisiert still bei `>0.001`, und
+  `InspectorPanel.tsx:607` rechnet die Summe ein viertes Mal inline. Ein Gewicht von `0.9995` ist im
+  Sync ein Fehler, in der Simulation nicht existent.
+- **`query` hatte zwei gegenläufige Policies.** `bifrostApi.ts:171` regeneriert immer aus dem CEL,
+  `bifrostDb.ts:415/451` behält den gespeicherten Wert, wenn das CEL unverändert ist. `sync.ts:97`
+  braucht einen Sonderfall („trägt eine frische uuid, kann nie gleich sein"), nur um die erste
+  Policy zu umgehen.
+- **Fallback-Pinning: vier Pfade, zwei Implementierungen.** `modelRefs.ts` entscheidet, dann
+  projizieren `bifrostApi.ts:149`, `bifrostMapper.ts:159` und `bifrostDb.ts:833` — die letzten
+  beiden unabhängig voneinander.
+- **`splitModelId` war zweimal da.** `sync.ts:84` machte `f.split('/')[0]` per Hand nach, ohne Test.
+- **`collectReachable` dreifach dupliziert**, keine der drei exportiert (`bifrostMapper.ts:33`,
+  `validation.ts:46`, `useStore.ts:1447`) — dieselbe BFS mit demselben `chainout`/`chainin`-Ausschluss.
+
+### Änderungen
+- [x] Neu `src/lib/ruleShape.ts`. Besitzt **Entscheidungen, nicht Mapper**: `apiRuleToRouting`
+      bleibt im Transportmodul, `nativeRowToRule` im SQL-Modul, `normalizeAiDraft` bleibt
+      Untrusted-Input-Behandlung. `rulesToWorkflow` ist ohnehin kein Normalisierer, sondern die
+      inverse Projektion. Interface: `WEIGHT_GATE_EPSILON`, `WEIGHT_WARN_EPSILON`, `weightSum`,
+      `normalizeWeights`, `queryForWrite`, `queryForRow`, `fallbacksForApi`, `fallbacksForConfig`,
+      `fallbacksFromConfig`.
+- [x] `normalizeWeights` gibt ein **neues** Array zurück. `aiDraft.ts` mutierte in place und las
+      danach `targets[last]` neu — eine Umstellung, die die Auswertungsreihenfolge ändert. Der
+      Test `aiDraft.test.ts` (unverändert, grün) ist der Beweis, dass es ein Umzug war.
+- [x] `collectReachable` wird aus `bifrostMapper.ts` exportiert; die beiden Kopien in
+      `validation.ts` und `useStore.ts` sind gelöscht. Bewusst **nicht** nach `ruleShape` — Graph-
+      Traversal ist keine Regelform.
+- [x] `sanitizeFallback` gelöscht (kein Aufrufer außerhalb `bifrostApi.ts`), ersetzt durch
+      `fallbacksForApi`.
+- [x] `sync.ts:84` nutzt jetzt `fallbackToParts(f).provider`.
+- [x] Neu `ruleShape.test.ts` (21 Fälle) und `providerWarnings`-Tests in `sync.test.ts` — die
+      Funktion war exportiert, pur und hatte **null** Tests.
+- [x] `bifrostDb.test.ts`: der Reuse-Zweig von `queryForRow` hatte keinen Fall. Neu: natives Schema,
+      `updateRule` auf ein Nicht-CEL-Feld → Query-String byte-identisch, plus Gegenprobe.
+
+### Ein Bug, den der neue Test gefunden hat
+`fallbacksForApi` war zuerst über `fallbackToParts(...).key_id` gebaut. Das löst auch
+`provider_key_name` auf — ein **config.json-Name**, der als `key_id` ans Gateway geht und dort
+nichts pinnt. Der alte `sanitizeFallback` hat das Alias verworfen; die neue Funktion muss es
+ebenfalls. Jetzt liest sie `fb.key_id` direkt. Der Kommentar an der Stelle sagt, warum.
+
+Zweiter Fund beim selben Test: `fallbacksForApi` gab ohne Pin die kompakte String-Form
+(`"openai/gpt-4o"`) zurück, wo `sanitizeFallback` ein Objekt lieferte. Das hätte den Payload
+verändert. Ein Objekt bleibt jetzt ein Objekt.
+
+### Abgelehnt
+- Ein gemeinsamer `toRoutingRule(raw: unknown)`-Trichter für die vier Mapper — vier strukturell
+  unähnliche Eingaben, eine imaginäre Interface.
+- `WeightPolicy` als injizierbare Konfiguration — zwei Konstanten mit dokumentiertem Grund.
+- `collectReachable` in `ruleShape` — Traversal ist Graph-Sache.
+- **`queryForWrite` mit deterministischen ids.** Stabile ids aus Feld/Op/Wert würden den
+  `writeFingerprint`-Ausschluss ersetzen — verlockend, aber es ändert den Payload, den das
+  Gateway-Dashboard bekommt. Notiert in `TODO.md`, nicht hier.
+
+### Validierung
+- `npm run typecheck` clean, `npm run build` erfolgreich.
+- Vitest: **144 Tests in 18 Dateien**, grün (vorher 115 in 16). `aiDraft.test.ts`,
+  `modelRefs.test.ts`, `bifrostMapper.test.ts`, `validation.test.ts` blieben unverändert — dass sie
+  weiter grün sind, ist der Beweis, dass jeder Schritt ein Umzug war.
+- `gateway-smoke`: **31/31**. Geprüft wurde unter anderem „Ungültige Gewichte werden abgewiesen
+  statt gepusht" — das ist die Schnittstelle zwischen `rejectionReason` mit
+  `WEIGHT_GATE_EPSILON` und dem, was der Mock antwortet.

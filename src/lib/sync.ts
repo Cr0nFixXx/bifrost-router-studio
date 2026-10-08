@@ -13,6 +13,8 @@
  */
 import type { ApiRule, ApiRuleCreate, ApiRuleUpdate, RoutingRule } from '@/types/bifrost';
 import { BifrostApi, apiRuleToRouting, toWriteShape } from '@/lib/bifrostApi';
+import { WEIGHT_GATE_EPSILON, weightSum } from '@/lib/ruleShape';
+import { fallbackToParts } from '@/lib/modelRefs';
 
 /** Why a rule was refused. Surfaced verbatim in the sync error chip. */
 export interface RuleRejection {
@@ -45,8 +47,8 @@ export function rejectionReason(rule: RoutingRule): string | null {
   if (!rule.cel_expression.trim()) return 'CEL-Bedingung ist leer';
   if (rule.targets.length === 0) return 'Keine Targets';
   if (rule.targets.some((t) => !(t.weight > 0))) return 'Gewichte müssen größer als 0 sein';
-  const sum = rule.targets.reduce((acc, t) => acc + t.weight, 0);
-  if (Math.abs(sum - 1) > 1e-6) return `Gewichte summieren zu ${sum.toFixed(3)}, nicht auf 1`;
+  const sum = weightSum(rule.targets);
+  if (Math.abs(sum - 1) > WEIGHT_GATE_EPSILON) return `Gewichte summieren zu ${sum.toFixed(3)}, nicht auf 1`;
   if (rule.scope !== 'global' && !rule.scope_id) return `Scope "${rule.scope}" benötigt eine scope_id`;
   return null;
 }
@@ -81,7 +83,7 @@ export function providerWarnings(
     const unknown = new Set<string>();
     for (const t of rule.targets) if (t.provider && !known.has(t.provider)) unknown.add(t.provider);
     for (const f of rule.fallbacks) {
-      const provider = typeof f === 'string' ? f.split('/')[0] : f.provider;
+      const provider = fallbackToParts(f).provider;
       if (provider && !known.has(provider)) unknown.add(provider);
     }
     if (unknown.size > 0) {

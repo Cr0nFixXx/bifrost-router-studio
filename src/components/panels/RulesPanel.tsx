@@ -23,7 +23,6 @@ const SCOPE_META: Record<RuleScope, { icon: React.ReactNode; label: string }> = 
 };
 
 export function RulesPanel() {
-  const storedRules = useStore((s) => s.rules);
   const dragReorder = useStore((s) => s.reorderRulesByIds);
   const reorderPriority = useStore((s) => s.reorderRulePriority);
   const deleteNode = useStore((s) => s.deleteNode);
@@ -33,7 +32,7 @@ export function RulesPanel() {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const rules = useMemo(() => workflowToRules(nodes as any, edges), [nodes, edges]);
-  const displayedRules = rules.length ? rules : storedRules;
+  const displayedRules = rules;
 
   const grouped = useMemo(() => {
     const g: Record<string, typeof rules> = {};

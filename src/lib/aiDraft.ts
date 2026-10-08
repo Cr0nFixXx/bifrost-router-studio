@@ -2,6 +2,7 @@ import type { ProviderConfig, RoutingFallback, RoutingRule, RoutingTarget } from
 import { compileGroup, parseExpression, validateCEL } from '@/lib/cel';
 import { fallbackFromParts } from '@/lib/modelRefs';
 import { createRuleUid, isRuleUid } from '@/lib/ruleIds';
+import { WEIGHT_WARN_EPSILON, normalizeWeights, weightSum } from '@/lib/ruleShape';
 
 export interface DraftValidation {
   errors: string[];
@@ -167,23 +168,9 @@ export function normalizeAiDraft(input: unknown, existingRules: RoutingRule[] = 
     if (celErrors.length) errors.push(`${name}: invalid CEL: ${celErrors.map((e) => e.message).join(', ')}`);
     const rawTargets = Array.isArray(obj.targets) ? obj.targets : obj.target ? [obj.target] : [];
     if (!Array.isArray(obj.targets) && obj.target) warnings.push(`${name}: non-standard singular target converted to targets[].`);
-    const targets = rawTargets.map(normalizeTarget).filter(Boolean) as RoutingTarget[];
-    if (targets.length === 0) errors.push(`${name}: no targets provided.`);
-    const sum = targets.reduce((acc, t) => acc + Number(t.weight ?? 0), 0);
-    if (targets.length && Math.abs(sum - 1) > 0.001) {
-      if (sum > 0) {
-        targets.forEach((t) => { t.weight = Number((Number(t.weight ?? 0) / sum).toFixed(6)); });
-        const normalizedSum = targets.reduce((acc, t) => acc + Number(t.weight ?? 0), 0);
-        if (targets.length > 0 && Math.abs(normalizedSum - 1) > 0.000001) {
-          targets[targets.length - 1].weight = Number((Number(targets[targets.length - 1].weight ?? 0) + (1 - normalizedSum)).toFixed(6));
-        }
-      } else {
-        const equal = Number((1 / targets.length).toFixed(6));
-        targets.forEach((t) => { t.weight = equal; });
-        const normalizedSum = targets.reduce((acc, t) => acc + Number(t.weight ?? 0), 0);
-        targets[targets.length - 1].weight = Number((Number(targets[targets.length - 1].weight ?? 0) + (1 - normalizedSum)).toFixed(6));
-      }
-    }
+    const raw = rawTargets.map(normalizeTarget).filter(Boolean) as RoutingTarget[];
+    if (raw.length === 0) errors.push(`${name}: no targets provided.`);
+    const targets = Math.abs(weightSum(raw) - 1) > WEIGHT_WARN_EPSILON ? normalizeWeights(raw) : raw;
     for (const t of targets) {
       if (t.provider && providerIds.size && !providerIds.has(t.provider)) warnings.push(`${name}: provider "${t.provider}" is not in the configured provider catalog.`);
       if (t.model && modelIds.size && !modelIds.has(t.model)) warnings.push(`${name}: model "${t.model}" is not in the current model catalog.`);

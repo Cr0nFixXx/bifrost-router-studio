@@ -96,6 +96,38 @@ export function inferProviderFromModelValue(value: string, providers: string[]):
   return providers.find((p) => p.toLowerCase() === first.toLowerCase()) ?? null;
 }
 
+export interface FallbackEdit {
+  provider?: string;
+  model?: string;
+  key_id?: string;
+}
+
+/**
+ * Apply one edit to a fallback entry: derive the provider, strip its prefix off the
+ * model, reassemble.
+ *
+ * `current`'s provider is passed to `providerOptions` as the value to keep. Without it
+ * a provider that is not in the config and not in the catalog — free text, a typo, or
+ * API mode before the gateway answered — cannot be inferred, `fallbackFromParts` gets
+ * an empty provider and returns `''`. The entry then vanishes from under the cursor
+ * while still being visible in the dropdown that offered it.
+ */
+export function resolveFallbackEdit(
+  current: RoutingFallback,
+  patch: FallbackEdit,
+  providers: Array<{ id?: string; type?: string }> = [],
+  catalog: Array<{ provider?: string }> = [],
+): RoutingFallback {
+  const parts = fallbackToParts(current);
+  const known = providerOptions(providers, catalog, parts.provider);
+  const provider =
+    (patch.provider ?? parts.provider) ||
+    inferProviderFromModelValue(patch.model ?? parts.model ?? '', known) ||
+    '';
+  const model = stripProviderPrefix(patch.model ?? parts.model ?? '', provider);
+  return fallbackFromParts(provider, model, patch.key_id ?? parts.key_id);
+}
+
 export function providerMatchesModel(entry: ModelRefLike, provider?: string | null): boolean {
   const p = String(provider ?? '').trim();
   if (!p) return true;

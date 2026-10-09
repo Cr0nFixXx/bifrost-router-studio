@@ -14,7 +14,7 @@ npm run build      # tsc --noEmit + vite build
 
 ## Test-Landkarte
 
-144 Tests in 18 Dateien.
+182 Tests in 19 Dateien.
 
 | Testdatei | Tests | Deckt ab |
 | --- | --- | --- |
@@ -23,15 +23,16 @@ npm run build      # tsc --noEmit + vite build
 | `syncNow.test.ts` | 7 | `useStore` gegen ein Fake-Gateway: Push, No-op, Priority-Tausch, Teilfehler |
 | `rules.test.ts` | 2 | eine Projektion: Reorder und Canvas-Edit sind sofort in `getCanvasRules()` sichtbar |
 | `bifrostApi.test.ts` | 5 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination, `/api/providers`-Shape |
-| `cel.test.ts` | 11 | Parser/Compiler, Visual↔CEL Round-Trip |
+| `cel.test.ts` | 34 | Parser/Compiler, Visual↔CEL Round-Trip, Feldtabelle, AST-Evaluator |
+| `simulation.test.ts` | 7 | `runSimulation` gegen einen echten Canvas: `in`, `time.hour`, `request_size`, `params`, Header-Case |
 | `bifrostMapper.test.ts` | 9 | Graph ⇄ Rules, `rulesToWorkflow` Hydration |
 | `validation.test.ts` | 9 | Diagnostics (Gewichte, Zyklen, CEL, Scopes) |
 | `gatewayExport.test.ts` | 8 | LiteLLM-YAML, OpenAI-Model-Groups |
 | `diff.test.ts` | 6 | Canvas-vs-DB-Diff |
-| `modelRefs.test.ts` | 10 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
+| `modelRefs.test.ts` | 17 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
 | `ruleOrder.test.ts` | 5 | Priority-Reorder innerhalb einer Scope-Gruppe |
 | `aiDraft.test.ts` | 4 | AI-Draft-Normalisierung und -Validierung |
-| `bifrostQuery.test.ts` | 3 | CEL → react-querybuilder JSON |
+| `bifrostQuery.test.ts` | 4 | CEL → react-querybuilder JSON, `queryFieldName`-Äquivalenz |
 | `customTemplates.test.ts` | 3 | Template-Packs |
 | `io.test.ts` | 2 | Import/Export der Workspace-Formate |
 | `theme.test.ts` | 2 | Theme-Tokens |
@@ -45,7 +46,7 @@ hier mit, sonst driftet die Summe.
 Eine Änderung ist fertig, wenn:
 
 1. `npm run typecheck` clean ist (keine `any` in `src/types/*`).
-2. `npm test` grün ist — **144 Tests, 18 Dateien**, keine Auslassungen.
+2. `npm test` grün ist — **182 Tests, 19 Dateien**, keine Auslassungen.
 3. `npm run build` durchläuft.
 4. Für Code, der Routing-Regeln berührt: der Visual↔CEL-Round-Trip hält, und Gewichte summieren
    weiter auf `1`.

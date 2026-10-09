@@ -57,19 +57,30 @@ No request traffic is ever proxied, in either mode.
 
 ## CEL handling
 
-`src/lib/cel.ts` is the CEL authority:
+`src/lib/cel.ts` is the CEL authority — grammar, vocabulary **and** execution:
+- `CEL_FIELDS: Record<CELField, CELFieldSpec>` — **the** field table: label, CEL token, `numeric` flag.
+  Typed as a `Record` over the union on purpose: a new `CELField` member is a **compile error here**,
+  which is the point. The editor, the wizard and `bifrostQuery` read this table; none of them keeps
+  a copy. `queryFieldName` is the projection Bifrost's query payload needs (`header` → `headers`).
 - `compileGroup(group)` — visual condition tree → CEL string (supports `negate` for `!(...)`).
 - `parseExpression(str)` — **real recursive-descent parser** (lexer + Pratt-style parser) →
-  condition tree. Guarantees visual↔CEL round-trips for the supported subset.
+  condition tree. Guarantees visual↔CEL round-trips for the supported subset. Returns `error` when
+  it threw; the `group` is then a placeholder and must not be read as a parse.
+- `evaluateCEL(str, ctx)` → `{ matched, warnings }` — **mock-only** evaluator for the simulation;
+  never a security boundary. It returns warnings instead of a bare `boolean` because the simulation
+  used to translate an undecidable condition into a silent `false`.
 - `validateCEL(str)` — lightweight linter (parens, quotes, `=`, dangling operators, parser warnings).
-- `evalCEL(str, ctx)` (in the store) — **mock-only** evaluator for the simulation; never a security boundary.
 - `src/lib/bifrostQuery.ts` — CEL → Bifrost's react-querybuilder JSON (`celToBifrostQuery`).
 
 Supported variables match Bifrost: `model`, `provider`, `request_type`, `headers[...]`, `params[...]`,
 `team_name`, `customer_id`, `virtual_key_name`, `budget_used`, `tokens_used`, `request`,
 `request_size`, `time.hour`, `complexity_tier`.
 Operators: `== != > < >= <= in startsWith endsWith contains matches`, combined with `&& || !`.
-**`src/lib/cel.ts` is the authority for this list** — if it disagrees with the code here, the code wins.
+**`CEL_FIELDS` is the authority for this list** — if this text disagrees with the code, the code wins.
+
+Two things the parser cannot represent, and callers must not assume otherwise:
+- `!(a && b)` is **flattened** with a warning. `negate` only ever applies to a single condition.
+- An unknown field token silently becomes `model` (`celTokenToField`'s `default:`). See `TODO.md`.
 
 ## Rule shape
 

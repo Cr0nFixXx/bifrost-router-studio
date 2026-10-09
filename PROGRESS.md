@@ -1406,6 +1406,79 @@ schrieb nichts"). Drei weitere Call-Sites vertrauten dem Snapshot trotzdem:
 - Noch **nicht** manuell geprüft: der Export-Fall im Browser (Canvas-Edit → LiteLLM-YAML → neuer
   Name in der Datei). Der Test pinnt die Projektion, nicht den Klickpfad.
 
+## v0.2.9 Build 26100823 — `cel.ts` wird Ausführungs- und Vokabular-Autorität ✅
+
+### Auslöser
+Kandidat D aus dem Architektur-Review. Der Review nannte ihn „worth exploring" — das Vermessen für
+diesen Plan hat etwas Schlimmeres gefunden: **die Simulation entschied anders als das Gateway, ohne
+Fehler und ohne Log**, und ihr Ergebnis ging in den AI-Kontext (`AiAssistantPanel.tsx:40` →
+`useAiAssistant.ts:250`).
+
+### Was wirklich kaputt war
+- **`in` war JS-`in`.** `evalCEL` (`useStore.ts:1549`) reichte den Ausdruck nach zwei String-Rewrites
+  an `new Function`. `complexity_tier in ["COMPLEX","REASONING"]` prüfte damit Array-**Indizes** —
+  Index 0 existiert, Index 1 nicht, also immer `false`. Bedingungen mit `in` haben nie matcht.
+- **`time.hour` und `request_size` fehlten im Kontext** (`useStore.ts:1396-1409`). Der generierte Code
+  hatte einen `catch`, der `false` zurückgab. Unsichtbar. `cel.test.ts:47` dokumentiert
+  `time.hour >= 0 && time.hour < 6` als unterstütztes Konstrukt — die Simulation konnte es nie
+  auswerten.
+- **`params` war fest `{}`.** Jede `params[...]`-Bedingung likewise.
+- **Sechs Feldtabellen.** `cel.ts` `FIELD_TO_CEL`, `bifrostQuery.ts` `FIELD_MAP`,
+  `InspectorPanel.tsx` `FIELDS`, `RuleChainWizard.tsx` `WIZARD_FIELDS` — letztere mit **13** Feldern,
+  `request` fehlte. Dazu `KNOWN_FIELDS` (null Leser, vier Felder die es in `CELField` nicht gibt) und
+  `OPS` (null Leser) in `cel.ts`. Ein neues Feld verlangte Änderungen an sechs Dateien, ohne
+  Compilerfehler wenn eine fehlte.
+
+### Was geändert wurde
+- **`CEL_FIELDS: Record<CELField, CELFieldSpec>`** in `cel.ts` — Label, CEL-Token, `numeric`-Flag.
+  Als `Record` typisiert: ein neues `CELField`-Member bricht `tsc`. Genau der Compilerfehler, der
+  ausblieb. Inspector und Wizard lesen die Tabelle, `bifrostQuery` nutzt `queryFieldName` als
+  Projektion, `isNumericField` ist ein Tabellenzugriff.
+- **`evaluateCEL(str, ctx)` → `{ matched, warnings }`**, auf dem `CELGroup`-Baum aus
+  `parseExpression`. Nicht `boolean` und nicht `throw`: ein `boolean` kann „matcht nicht" nicht von
+  „kann ich nicht sagen" unterscheiden — das war die Fehlerursache; ein `throw` bricht `simulate`
+  ab, das den ersten passenden Trigger sucht. Ein Feld, das der Kontext nicht liefert, erzeugt eine
+  Warnung. Die Kommaliste für `in` teilt sich mit `emitValue` — zwei Aufspaltungen würden
+  gegeneinander driften.
+- **`ParseResult.error`** unterscheidet Parse-Fehler von der Platzhaltergruppe. Ohne das liefe der
+  Evaluator auf `newGroup()` und meldete `model == ""` → `false`, ohne Warnung.
+- **Kontext vervollständigt:** `time.hour` aus der Uhr (kein Playground-Feld — die Anfrage kommt
+  jetzt), `request_size` und `params` als echte `SimInput`-Felder mit Panel-Bedienung. Header
+  case-insensitiv, wie HTTP es verlangt.
+- **`resolveFallbackEdit`** in `modelRefs.ts`. `updateFb` rief `providerOptions` mit zwei Argumenten
+  und ließ das dritte weg, das `ProviderDropdown` übergibt. Folge: ein Provider, der weder konfiguriert
+  noch im Katalog ist, konnte nicht inferiert werden, `fallbackFromParts` bekam `''`, und der
+  Fallback-Eintrag verschwand beim Tippen im Modell-Feld — während das Datalist genau diesen Wert
+  anbot. Die Regel war einmal implementiert, ohne Test, an einer Stelle.
+- **Gelöscht:** `evalCEL` (16 Zeilen `new Function`), `KNOWN_FIELDS`, `OPS`, `FIELD_TO_CEL`,
+  `isNumericField`, `bifrostQuery.FIELD_MAP`, die Wizard-Tabellen, und vier tote Funktionen in
+  `InspectorPanel.tsx` (`ConditionEditor`, `ProviderSelect`, `ModelSelect`, `ComplexityEditor` — alle
+  mit null Aufrufern).
+
+### Verifikation
+182 Tests in 19 Dateien, `npm run build` durch, gateway-smoke **31/31**.
+
+Die Simulationstests sind der eigentliche Beweis, weil sie den Storepfad fahren und nicht nur die
+Funktion: `src/store/simulation.test.ts` ruft echte `runSimulation()`-Aufrufe gegen einen echten
+Canvas auf. `in`, `time.hour`, `request_size`, `params` und Header-Case matchen jetzt — **alle sechs
+Fälle lieferten vorher `false`**. Eine kaputte Regex meldet `not evaluable: invalid regex` als Notiz
+statt still `false`.
+
+### Bewusst nicht gemacht
+- **`RuleChainWizard.quickCelExpression`** baut CEL per String-Interpolation: numerische Werte immer
+  gequotet (`budget_used == "42"`), `time_hour` statt `time.hour`, `in` ohne Klammern. Echter Bug —
+  aber die Datei ist ohne jsdom nicht testbar, und der Blast Radius ist eine Wizard-UI. Steht in
+  `TODO.md`.
+- **`celTokenToField` streng machen.** Der `default:`-Zweig fällt still auf `model`; `virtual_key_id
+  == "x"` parst zu `model == "x"` ohne Warnung. Ein strenger Parser lässt `celToBifrostQueryObject`
+  öfter `null` liefern, und `ruleShape.queryForWrite` schreibt dann öfter `query: null`. Echter
+  Verhaltenswechsel im Sync, eigener Commit. Steht in `TODO.md`.
+- **`ValueEditor.requestTypes` (9 Werte) gegen `REQUEST_TYPES` (7).** Die Union ist zu eng, nicht
+  der Inspector zu weit — `aiDraft.ts:72` erzeugt `request_type == "responses"`, was in
+  `REQUEST_TYPES` fehlt. Gateway-Frage, keine Refactor-Frage.
+- **`syncMirror` / `setRoute` / `removeRoute`** aus `InspectorPanel` wandern nicht. Dünne Hüllen um
+  `updateNodeData`; eine extrahierte Funktion hätte einen Aufrufer und würde den Body nur verschieben.
+
 ## v0.2.9 Build 26100803 — `ruleShape`: die geteilten Entscheidungen an einem Ort ✅
 
 ### Auslöser

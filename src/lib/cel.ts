@@ -2,9 +2,15 @@
  * CEL (Common Expression Language) helpers for the routing rules builder.
  *
  * Provides:
+ *   - CEL_FIELDS: the one field table — labels, CEL tokens, numeric flag
  *   - compileGroup(): CELGroup -> CEL expression string
  *   - parseExpression(): a REAL recursive-descent CEL parser -> CELGroup
+ *   - evaluateCEL(): CELGroup -> boolean, against a request-shaped context
  *   - validateCEL(): lightweight syntactic + semantic linting
+ *
+ * The field table is typed `Record<CELField, …>`, so a new member of the union in
+ * `types/bifrost.ts` is a compile error here instead of a field that is missing
+ * from the editor, the query translator and the evaluator.
  *
  * The parser is no longer "best effort": it implements a proper grammar for the
  * subset of CEL that Bifrost exposes (see docs), so visual<->CEL round-trips
@@ -35,22 +41,54 @@ export function newGroup(combinator: '&&' | '||' = '&&'): CELGroup {
   return { id: uid('grp'), combinator, conditions: [newCondition()] };
 }
 
-const FIELD_TO_CEL: Record<CELField, string> = {
-  model: 'model',
-  provider: 'provider',
-  request_type: 'request_type',
-  header: 'headers["__H__"]',
-  param: 'params["__H__"]',
-  team_name: 'team_name',
-  customer_id: 'customer_id',
-  virtual_key_name: 'virtual_key_name',
-  budget_used: 'budget_used',
-  tokens_used: 'tokens_used',
-  request: 'request',
-  request_size: 'request_size',
-  time_hour: 'time.hour',
-  complexity_tier: 'complexity_tier',
+export interface CELFieldSpec {
+  /** Display label for pickers. Never semantic. */
+  label: string;
+  /** CEL token. `__H__` is a placeholder replaced by the header/param name. */
+  cel: string;
+  /** Numeric fields emit unquoted values and lose the string methods. */
+  numeric?: boolean;
+}
+
+/**
+ * The one field table. Typed as `Record<CELField, …>` on purpose: adding a member to
+ * `CELField` breaks `tsc` here instead of silently missing a UI, a translator and an
+ * evaluator in four other files.
+ */
+export const CEL_FIELDS: Record<CELField, CELFieldSpec> = {
+  model: { label: 'model', cel: 'model' },
+  provider: { label: 'provider', cel: 'provider' },
+  request_type: { label: 'request_type', cel: 'request_type' },
+  header: { label: 'header', cel: 'headers["__H__"]' },
+  param: { label: 'param', cel: 'params["__H__"]' },
+  team_name: { label: 'team_name', cel: 'team_name' },
+  customer_id: { label: 'customer_id', cel: 'customer_id' },
+  virtual_key_name: { label: 'virtual_key_name', cel: 'virtual_key_name' },
+  budget_used: { label: 'budget_used', cel: 'budget_used', numeric: true },
+  tokens_used: { label: 'tokens_used', cel: 'tokens_used', numeric: true },
+  request: { label: 'request (rate)', cel: 'request', numeric: true },
+  request_size: { label: 'request_size', cel: 'request_size', numeric: true },
+  time_hour: { label: 'time.hour', cel: 'time.hour', numeric: true },
+  complexity_tier: { label: 'complexity_tier', cel: 'complexity_tier' },
 };
+
+/** Every operator the studio supports. */
+export const ALL_OPS: CELComparison[] = [
+  '==', '!=', '>', '<', '>=', '<=', 'in', 'startsWith', 'endsWith', 'contains', 'matches',
+];
+
+/** Operators valid for a field. Numeric fields have no string methods. */
+export function opsForField(field: CELField): CELComparison[] {
+  return CEL_FIELDS[field].numeric ? ['==', '!=', '>', '<', '>=', '<=', 'in'] : ALL_OPS;
+}
+
+/**
+ * Field name for Bifrost's react-querybuilder payload: the CEL token without the
+ * index, so `header` becomes `headers` and `time_hour` stays `time.hour`.
+ */
+export function queryFieldName(field: CELField): string {
+  return CEL_FIELDS[field].cel.replace(/\["__H__"\]/, '');
+}
 
 /** Map a CEL field token to our union type (guessing header/param from syntax). */
 function celTokenToField(token: string): { field: CELField; headerName?: string } {
@@ -91,15 +129,20 @@ function celTokenToField(token: string): { field: CELField; headerName?: string 
 }
 
 function isNumericField(field: CELField): boolean {
-  return field === 'budget_used' || field === 'tokens_used' || field === 'request' || field === 'request_size' || field === 'time_hour';
+  return !!CEL_FIELDS[field].numeric;
+}
+
+/** Split the comma list an `in` condition carries. Shared with the evaluator. */
+function splitInList(value: string): string[] {
+  return value
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
 }
 
 function emitValue(field: CELField, op: CELComparison, value: string): string {
   if (op === 'in') {
-    const items = value
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean)
+    const items = splitInList(value)
       .map((v) => (isNumericField(field) ? v : JSON.stringify(v)))
       .join(', ');
     return `[${items}]`;
@@ -109,7 +152,7 @@ function emitValue(field: CELField, op: CELComparison, value: string): string {
 }
 
 export function emitCondition(c: CELCondition): string {
-  const base = FIELD_TO_CEL[c.field].replace('__H__', c.headerName ?? 'x-header');
+  const base = CEL_FIELDS[c.field].cel.replace('__H__', c.headerName ?? 'x-header');
   let expr: string;
   switch (c.op) {
     case 'startsWith':
@@ -142,9 +185,14 @@ export { compileGroup as compile };
 
 /* ----------------------- parse (recursive descent) ----------------- */
 
-interface ParseResult {
+export interface ParseResult {
   group: CELGroup;
   warnings: string[];
+  /**
+   * Set when the parser threw. `group` is then a placeholder `newGroup()` — a
+   * blank `model` condition — and must not be read as a successful parse.
+   */
+  error?: string;
 }
 
 export function parseExpression(expr: string): ParseResult {
@@ -161,8 +209,9 @@ export function parseExpression(expr: string): ParseResult {
     const group = parser.parse();
     return { group, warnings };
   } catch (err) {
-    warnings.push((err as Error).message);
-    return { group: newGroup(), warnings };
+    const message = (err as Error).message;
+    warnings.push(message);
+    return { group: newGroup(), warnings, error: message };
   }
 }
 
@@ -411,9 +460,157 @@ class Parser {
   }
 }
 
-/* --------------------------- helpers ------------------------------- */
+/* ------------------------- evaluation ------------------------------ */
 
-const OPS: CELComparison[] = ['!=', '>=', '<=', '==', '>', '<', 'in', 'startsWith', 'endsWith', 'contains', 'matches'];
+export interface CELEvalResult {
+  matched: boolean;
+  /**
+   * Non-empty when something could not be decided: a missing context value, an
+   * unparseable expression, an invalid regex. The simulation is a mock, so the
+   * point is that a wrong verdict is *visible*, not that it is prevented.
+   */
+  warnings: string[];
+}
+
+/** Three-valued: `undefined` is "cannot tell", and `!undefined` stays undefined. */
+type Tri = boolean | undefined;
+
+interface EvalState {
+  warnings: string[];
+}
+
+function undecidable(state: EvalState, why: string): Tri {
+  if (!state.warnings.includes(why)) state.warnings.push(why);
+  return undefined;
+}
+
+function combine(tri: Tri[], combinator: '&&' | '||'): Tri {
+  let sawUnknown = false;
+  for (const t of tri) {
+    if (t === undefined) sawUnknown = true;
+    else if (combinator === '&&' && !t) return false;
+    else if (combinator === '||' && t) return true;
+  }
+  // Nothing short-circuited, so the group is decided only if every part was.
+  return sawUnknown ? undefined : combinator === '&&';
+}
+
+function headerLookup(headers: Record<string, unknown>, name: string): unknown {
+  if (name in headers) return headers[name];
+  // HTTP header names are case-insensitive; the simulator takes them verbatim
+  // from a textarea, so `X-Tier` must still find `x-tier`.
+  const hit = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
+  return hit === undefined ? undefined : headers[hit];
+}
+
+/** Resolve a condition's left-hand side. `undefined` = the context has no such value. */
+function resolveActual(c: CELCondition, ctx: Record<string, unknown>, state: EvalState): unknown {
+  switch (c.field) {
+    case 'header':
+      return headerLookup((ctx.headers ?? {}) as Record<string, unknown>, c.headerName ?? 'x-header');
+    case 'param': {
+      const params = (ctx.params ?? {}) as Record<string, unknown>;
+      return params[c.headerName ?? 'x-param'];
+    }
+    case 'time_hour': {
+      const time = ctx.time as { hour?: unknown } | undefined;
+      return time?.hour;
+    }
+    default:
+      return ctx[CEL_FIELDS[c.field].cel];
+  }
+}
+
+/** The key a missing-context warning names, as it would read in the expression. */
+function contextKey(c: CELCondition): string {
+  return CEL_FIELDS[c.field].cel.replace('__H__', c.headerName ?? '');
+}
+
+function equality(actual: unknown, expected: string, numeric: boolean): boolean {
+  if (numeric) return Number(actual) === Number(expected);
+  return String(actual) === expected;
+}
+
+function evalCondition(c: CELCondition, ctx: Record<string, unknown>, state: EvalState): Tri {
+  const numeric = !!CEL_FIELDS[c.field].numeric;
+  const actual = resolveActual(c, ctx, state);
+  if (actual === undefined) return undecidable(state, `no context value for "${contextKey(c)}"`);
+
+  const value = c.value ?? '';
+  let result: Tri;
+  switch (c.op) {
+    case '==':
+      result = equality(actual, value, numeric);
+      break;
+    case '!=':
+      result = !equality(actual, value, numeric);
+      break;
+    case 'in':
+      // The real fix: JS `in` tests array *indices*, so every `x in ["a","b"]` was
+      // silently false. This is a membership test, using the same split as emitValue.
+      result = splitInList(value).some((item) => equality(actual, item, numeric));
+      break;
+    case '>':
+    case '<':
+    case '>=':
+    case '<=': {
+      if (!numeric) return undecidable(state, `"${c.op}" needs a numeric field, "${CEL_FIELDS[c.field].cel}" is not one`);
+      const a = Number(actual);
+      const b = Number(value);
+      if (Number.isNaN(a) || Number.isNaN(b)) return undecidable(state, `not a number: "${contextKey(c)}" ${c.op} "${value}"`);
+      result = c.op === '>' ? a > b : c.op === '<' ? a < b : c.op === '>=' ? a >= b : a <= b;
+      break;
+    }
+    case 'startsWith':
+    case 'endsWith':
+    case 'contains':
+    case 'matches': {
+      const s = String(actual);
+      if (c.op === 'matches') {
+        try {
+          result = new RegExp(value).test(s);
+        } catch {
+          return undecidable(state, `invalid regex "${value}" in matches`);
+        }
+      } else {
+        result = c.op === 'startsWith' ? s.startsWith(value) : c.op === 'endsWith' ? s.endsWith(value) : s.includes(value);
+      }
+      break;
+    }
+    default:
+      result = undecidable(state, `unknown operator "${String(c.op)}"`);
+  }
+  if (result === undefined) return undefined;
+  return c.negate ? !result : result;
+}
+
+function evalGroup(group: CELGroup, ctx: Record<string, unknown>, state: EvalState): Tri {
+  // An empty group compiles to `true` (see compileGroup) and means the same here.
+  if (group.conditions.length === 0) return true;
+  const results: Tri[] = group.conditions.map((c) => ('field' in c ? evalCondition(c, ctx, state) : evalGroup(c, ctx, state)));
+  return combine(results, group.combinator);
+}
+
+/**
+ * Evaluate a CEL expression against a request-shaped context. Drives the mock
+ * simulation only — never a security boundary.
+ *
+ * Returns warnings instead of throwing: `simulate` walks triggers looking for the
+ * first match, so an exception at trigger 3 would return no result at all. And a
+ * plain `boolean` cannot tell "did not match" from "could not tell", which is how
+ * a missing `time` key in the context turned into a silent `false` for years.
+ */
+export function evaluateCEL(expr: string, ctx: Record<string, unknown>): CELEvalResult {
+  const parsed = parseExpression(expr);
+  if (parsed.error) return { matched: false, warnings: [...parsed.warnings, `parse error: ${parsed.error}`] };
+
+  const state: EvalState = { warnings: [] };
+  const matched = evalGroup(parsed.group, ctx, state);
+  for (const w of parsed.warnings) if (!state.warnings.includes(w)) state.warnings.push(w);
+  return { matched: matched === true, warnings: state.warnings };
+}
+
+/* --------------------------- helpers ------------------------------- */
 
 function stripQuotes(v: string): string {
   let s = (v ?? '').trim();
@@ -428,12 +625,6 @@ export interface CELDiagnostic {
   severity: 'error' | 'warning';
   message: string;
 }
-
-const KNOWN_FIELDS = new Set<string>([
-  'model', 'provider', 'request_type', 'headers', 'params', 'virtual_key_id',
-  'virtual_key_name', 'team_id', 'team_name', 'customer_id', 'customer_name',
-  'budget_used', 'tokens_used', 'request', 'request_size', 'time', 'time.hour', 'request_size', 'complexity_tier',
-]);
 
 /**
  * Lightweight CEL linter. Catches unbalanced parens/quotes, empty expressions,

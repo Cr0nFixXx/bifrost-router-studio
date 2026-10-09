@@ -5,7 +5,7 @@
  * optional `routing_rules.query` builder state to populate the visual editor.
  */
 import type { CELCondition, CELGroup, CELComparison, CELField } from '@/types/bifrost';
-import { parseExpression } from '@/lib/cel';
+import { parseExpression, queryFieldName } from '@/lib/cel';
 
 export interface BifrostQueryRule {
   id: string;
@@ -44,23 +44,6 @@ const OPERATOR_MAP: Record<CELComparison, string> = {
   matches: 'matches',
 };
 
-const FIELD_MAP: Record<CELField, string> = {
-  model: 'model',
-  provider: 'provider',
-  request_type: 'request_type',
-  header: 'headers',
-  param: 'params',
-  team_name: 'team_name',
-  customer_id: 'customer_id',
-  virtual_key_name: 'virtual_key_name',
-  budget_used: 'budget_used',
-  tokens_used: 'tokens_used',
-  request: 'request',
-  request_size: 'request_size',
-  time_hour: 'time.hour',
-  complexity_tier: 'complexity_tier',
-};
-
 function queryValue(c: CELCondition): string {
   const value = String(c.value ?? '');
   if (c.field === 'header' || c.field === 'param') return `${c.headerName ?? ''}:${value}`;
@@ -70,7 +53,7 @@ function queryValue(c: CELCondition): string {
 export function conditionToBifrostQuery(c: CELCondition): QueryNode {
   const rule: BifrostQueryRule = {
     id: qid('cond'),
-    field: FIELD_MAP[c.field] ?? c.field,
+    field: queryFieldName(c.field),
     operator: OPERATOR_MAP[c.op] ?? c.op,
     value: queryValue(c),
     valueSource: 'value',

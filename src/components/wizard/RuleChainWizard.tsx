@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Modal, Button, Chip } from '@/components/ui/primitives';
-import { compileGroup, newCondition, newGroup, parseExpression, validateCEL } from '@/lib/cel';
+import { CEL_FIELDS, compileGroup, newCondition, newGroup, opsForField, parseExpression, validateCEL } from '@/lib/cel';
 import { fallbackFromParts, fallbackToParts } from '@/lib/modelRefs';
 import { newId } from '@/lib/nodeFactory';
 import { rulesToWorkflow } from '@/lib/bifrostMapper';
@@ -375,22 +375,6 @@ export function RuleChainWizard() {
 }
 
 
-const WIZARD_FIELDS: Array<{ value: CELField; label: string }> = [
-  { value: 'model', label: 'model' },
-  { value: 'provider', label: 'provider' },
-  { value: 'request_type', label: 'request_type' },
-  { value: 'header', label: 'header' },
-  { value: 'param', label: 'param' },
-  { value: 'team_name', label: 'team_name' },
-  { value: 'customer_id', label: 'customer_id' },
-  { value: 'virtual_key_name', label: 'virtual_key_name' },
-  { value: 'budget_used', label: 'budget_used' },
-  { value: 'tokens_used', label: 'tokens_used' },
-  { value: 'request_size', label: 'request_size' },
-  { value: 'time_hour', label: 'time.hour' },
-  { value: 'complexity_tier', label: 'complexity_tier' },
-];
-const WIZARD_OPS: CELComparison[] = ['==', '!=', '>', '<', '>=', '<=', 'in', 'startsWith', 'endsWith', 'contains', 'matches'];
 
 function WizardGroupEditor({ group, onChange, depth = 0, onRemove }: { group: CELGroup; onChange: (g: CELGroup) => void; depth?: number; onRemove?: () => void }) {
   const setChild = (idx: number, next: CELCondition | CELGroup) => onChange({ ...group, conditions: group.conditions.map((c, i) => i === idx ? next : c) });
@@ -415,8 +399,8 @@ function WizardGroupEditor({ group, onChange, depth = 0, onRemove }: { group: CE
 function WizardConditionRow({ cond, onChange, onRemove }: { cond: CELCondition; onChange: (c: CELCondition) => void; onRemove: () => void }) {
   return (
     <div className="grid grid-cols-[1fr_0.8fr_1fr_auto] gap-1.5 items-center">
-      <select className="input text-xs" value={cond.field} onChange={(e) => onChange({ ...cond, field: e.target.value as CELField })}>{WIZARD_FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}</select>
-      <select className="input text-xs" value={cond.op} onChange={(e) => onChange({ ...cond, op: e.target.value as CELComparison })}>{WIZARD_OPS.map((op) => <option key={op} value={op}>{op}</option>)}</select>
+      <select className="input text-xs" value={cond.field} onChange={(e) => onChange({ ...cond, field: e.target.value as CELField })}>{Object.entries(CEL_FIELDS).map(([value, spec]) => <option key={value} value={value}>{spec.label}</option>)}</select>
+      <select className="input text-xs" value={cond.op} onChange={(e) => onChange({ ...cond, op: e.target.value as CELComparison })}>{opsForField(cond.field).map((op) => <option key={op} value={op}>{op}</option>)}</select>
       <input className="input text-xs" value={cond.value} onChange={(e) => onChange({ ...cond, value: e.target.value })} placeholder={cond.op === 'in' ? 'a, b, c' : 'value'} />
       <button type="button" className="text-ink-faint hover:text-neon-red" onClick={onRemove}>×</button>
       {(cond.field === 'header' || cond.field === 'param') && <input className="input text-xs col-span-2" value={cond.headerName ?? ''} onChange={(e) => onChange({ ...cond, headerName: e.target.value })} placeholder="header/param key" />}

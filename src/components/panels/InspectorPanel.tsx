@@ -4,7 +4,7 @@
  * controls, and — in Expert mode — a raw JSON view. Weights, providers, models
  * and fallbacks are edited here too.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Sliders,
@@ -15,7 +15,6 @@ import {
   Tag,
   Plus,
   Trash2,
-  Gauge,
   Layers3,
   Hash,
   Settings2,
@@ -27,17 +26,17 @@ import { Button, Chip, EmptyState, Toggle } from '@/components/ui/primitives';
 import {
   fallbackFromParts,
   fallbackToParts,
-  inferProviderFromModelValue,
   modelCandidates,
   providerOptions,
+  resolveFallbackEdit,
   stripProviderPrefix,
+  type FallbackEdit,
 } from '@/lib/modelRefs';
 import { weightSum } from '@/lib/ruleShape';
 import {
-  compileGroup,
+  CEL_FIELDS,
   newCondition,
-  parseExpression,
-  validateCEL,
+  opsForField,
   uid,
 } from '@/lib/cel';
 import type {
@@ -45,29 +44,9 @@ import type {
   CELCondition,
   CELField,
   CELGroup,
-  ComplexityTier,
   RoutingFallback,
   RuleScope,
 } from '@/types/bifrost';
-
-const FIELDS: Array<{ value: CELField; label: string; numeric?: boolean }> = [
-  { value: 'model', label: 'model' },
-  { value: 'provider', label: 'provider' },
-  { value: 'request_type', label: 'request_type' },
-  { value: 'header', label: 'header', },
-  { value: 'param', label: 'param' },
-  { value: 'team_name', label: 'team_name' },
-  { value: 'customer_id', label: 'customer_id' },
-  { value: 'virtual_key_name', label: 'virtual_key_name' },
-  { value: 'budget_used', label: 'budget_used', numeric: true },
-  { value: 'tokens_used', label: 'tokens_used', numeric: true },
-  { value: 'request', label: 'request (rate)', numeric: true },
-  { value: 'request_size', label: 'request_size', numeric: true },
-  { value: 'time_hour', label: 'time.hour', numeric: true },
-  { value: 'complexity_tier', label: 'complexity_tier' },
-];
-
-const OPS: CELComparison[] = ['==', '!=', '>', '<', '>=', '<=', 'in', 'startsWith', 'endsWith', 'contains', 'matches'];
 
 export function InspectorPanel() {
   const node = useSelectedNode();
@@ -187,12 +166,12 @@ function ConditionNodeEditor({ node }: { node: any }) {
       <div className="grid grid-cols-2 gap-3">
         <Field icon={<Filter size={12} />} label="Field">
           <select className="input text-xs" value={data.field} onChange={(e) => update({ field: e.target.value as CELField })}>
-            {FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            {Object.entries(CEL_FIELDS).map(([value, spec]) => <option key={value} value={value}>{spec.label}</option>)}
           </select>
         </Field>
         <Field icon={<Code2 size={12} />} label="Operator">
           <select className="input text-xs" value={data.op} onChange={(e) => update({ op: e.target.value as CELComparison })}>
-            {OPS.map((op) => <option key={op} value={op}>{op}</option>)}
+            {opsForField(data.field).map((op) => <option key={op} value={op}>{op}</option>)}
           </select>
         </Field>
       </div>
@@ -278,12 +257,6 @@ function TriggerEditor({ node }: { node: any }) {
       </div>
     </div>
   );
-}
-
-/* -------------------------- condition editor ----------------------- */
-
-function ConditionEditor({ group, onChange }: { group: CELGroup; onChange: (g: CELGroup) => void }) {
-  return <RuleGroupEditor group={group} onChange={onChange} depth={0} />;
 }
 
 type RuleItem = CELCondition | CELGroup;
@@ -454,8 +427,8 @@ function ConditionRow({
     >
       <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(130px,1fr)_minmax(90px,0.8fr)_minmax(130px,1.3fr)_auto]">
         <select className="input text-xs" value={condition.field} onChange={(e) => setField(e.target.value as CELField)}>
-          {FIELDS.map((f) => (
-            <option key={f.value} value={f.value}>{f.label}</option>
+          {Object.entries(CEL_FIELDS).map(([value, spec]) => (
+            <option key={value} value={value}>{spec.label}</option>
           ))}
         </select>
 
@@ -552,11 +525,6 @@ function MenuAction({ label, onClick, danger }: { label: string; onClick: () => 
   );
 }
 
-function opsForField(field: CELField): CELComparison[] {
-  if (FIELDS.find((f) => f.value === field)?.numeric) return ['==', '!=', '>', '<', '>=', '<=', 'in'];
-  return OPS;
-}
-
 function normalizeOpForField(field: CELField, op: CELComparison): CELComparison {
   const allowed = opsForField(field);
   return allowed.includes(op) ? op : '==';
@@ -642,15 +610,8 @@ function FallbackEditor({ node }: { node: any }) {
         </div>
         {fallbacks.map((fb: RoutingFallback, i: number) => {
           const { provider: prov, model, key_id } = fallbackToParts(fb);
-          // Must include the catalog: in API mode `providers` is empty until the
-          // gateway answers, and without the catalog the provider back-fill below
-          // can never match anything.
-          const providerIds = providerOptions(providers ?? [], catalog ?? []);
-          const updateFb = (patch: { provider?: string; model?: string; key_id?: string }) => {
-            const inferred = (patch.provider ?? prov) || inferProviderFromModelValue(patch.model ?? model ?? '', providerIds) || '';
-            const cleanModel = stripProviderPrefix(patch.model ?? model ?? '', inferred);
-            setFallback(i, fallbackFromParts(inferred, cleanModel, patch.key_id ?? key_id));
-          };
+          const updateFb = (patch: FallbackEdit) =>
+            setFallback(i, resolveFallbackEdit(fb, patch, providers, catalog));
           return (
           <div key={i} className="grid grid-cols-[28px_1fr_1fr_1fr_auto] gap-1.5 items-center">
             <span className="text-[10px] text-ink-faint text-right">#{i + 1}</span>
@@ -711,64 +672,6 @@ function KeyDropdown({ value, onChange, providers, providerId }: any) {
       <input className="input text-xs" list={listId} value={value ?? ''} placeholder="key id" onChange={(e) => onChange(e.target.value)} />
       <datalist id={listId}>{Array.from(new Set<string>(keys)).map((k: string) => <option key={k} value={k} />)}</datalist>
     </>
-  );
-}
-
-function ProviderSelect({ value, onChange, providers, catalog, current }: any) {
-  const providerIds = providerOptions(providers ?? [], catalog ?? [], current?.providerId);
-  const listId = `providers-${current?.kind ?? 'node'}`;
-  return (
-    <>
-      <input className="input text-xs" list={listId} value={value ?? ''} placeholder="provider or alias" onChange={(e) => onChange(e.target.value)} />
-      <datalist id={listId}>
-        {providerIds.map((id: string) => <option key={id} value={id} />)}
-      </datalist>
-    </>
-  );
-}
-
-function ModelSelect({ value, onChange, catalog, current }: any) {
-  const providerId = String(current?.providerId ?? '');
-  const candidates = modelCandidates(catalog ?? [], providerId, false);
-  const listId = `models-${providerId || 'all'}-${current?.kind ?? 'node'}`.replace(/[^A-Za-z0-9_-]/g, '_');
-  return (
-    <>
-      <input className="input text-xs" list={listId} value={value ?? current?.modelId ?? ''} placeholder="model or alias" onChange={(e) => onChange(stripProviderPrefix(e.target.value, providerId))} />
-      <datalist id={listId}>{candidates.map((m: string) => <option key={m} value={m} />)}</datalist>
-    </>
-  );
-}
-
-/* -------------------------- complexity editor ---------------------- */
-
-function ComplexityEditor({ node }: { node: any }) {
-  const data = node.data;
-  const tiers: ComplexityTier[] = ['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING'];
-  return (
-    <div className="space-y-4">
-      <Field icon={<Layers3 size={12} />} label="Complexity tier">
-        <div className="grid grid-cols-2 gap-2">
-          {tiers.map((t) => (
-            <button
-              key={t}
-              onClick={() => {
-                useStore.getState().updateNodeData(node.id, { tier: t });
-                // also reflect on connected trigger if any
-              }}
-              className={`rounded-lg px-3 py-2 text-xs border transition-colors ${
-                data.tier === t ? 'bg-neon-amber/15 border-neon-amber/40 text-neon-amber' : 'border-border text-ink-muted hover:bg-surface-2'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </Field>
-      <p className="text-[11px] text-ink-faint leading-relaxed">
-        Bifrost auto-classifies each request into a tier. Connect this node from a Trigger condition
-        like <code className="text-ink-muted">complexity_tier == &quot;{data.tier}&quot;</code> to route it.
-      </p>
-    </div>
   );
 }
 

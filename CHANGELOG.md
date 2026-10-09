@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.9 — Build 26100823
+
+- **The simulation no longer decides differently from the gateway.** Conditions using `in`,
+  `time.hour`, `request_size` or `params[...]` were silently always false. `in` was evaluated as
+  JavaScript's `in`, which tests array *indices*, so `complexity_tier in ["COMPLEX","REASONING"]`
+  could never match; `time.hour` and `request_size` were missing from the simulation context
+  entirely, and the evaluator swallowed the resulting error. The evaluator now walks the same
+  parse tree the editor does, and a condition it cannot decide reports a warning on the step instead
+  of returning a confident `false`. The playground gained inputs for `request_size` and `params`.
+- **One field table for CEL.** The editor, the wizard, the query translator and the evaluator each
+  carried their own list of condition fields — one of them was missing a field entirely. A new field
+  now breaks the type checker instead of silently going absent from four files.
+- **Editing a fallback no longer deletes it.** A provider that was neither configured nor in the
+  catalog — free text, a typo, or API mode before the gateway answered — could not survive an edit
+  to the model field: the entry collapsed to nothing while the dropdown still offered the very value
+  being typed. That rule now lives in `modelRefs` with tests.
+
 ## 0.2.9 — Build 26100803
 
 - **One weight rule, one fallback rule, one query rule.** The same three decisions — when a weight

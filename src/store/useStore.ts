@@ -25,6 +25,7 @@ import { defaultData, newId } from '@/lib/nodeFactory';
 import { validateGraph, type Diagnostic } from '@/lib/validation';
 import { autoLayout, type FlowDirection } from '@/lib/layout';
 import { collectReachable, rulesToWorkflow, workflowToRules } from '@/lib/bifrostMapper';
+import { evaluateCEL } from '@/lib/cel';
 import { reorderWithinGroup } from '@/lib/ruleOrder';
 import { diffRules, type RuleDiff as HistoryDiff } from '@/lib/diff';
 import {
@@ -110,8 +111,11 @@ export interface SimInput {
   complexity_tier: string;
   budget_used: number;
   tokens_used: number;
+  /** Request rate — NOT the body size. That one is `request_size`. */
   request: number;
+  request_size: number;
   headers: Record<string, string>;
+  params: Record<string, string>;
   forcePrimaryFailure: boolean;
 }
 
@@ -126,7 +130,9 @@ const DEFAULT_SIM_INPUT: SimInput = {
   budget_used: 42,
   tokens_used: 31,
   request: 18,
+  request_size: 1200,
   headers: { 'x-tier': 'premium', 'x-region': 'us-east', client: 'claude' },
+  params: { stream: 'true' },
   forcePrimaryFailure: false,
 };
 
@@ -1401,34 +1407,42 @@ async function simulate(nodes: WFNode[], edges: Edge[], input: SimInput = DEFAUL
     customer_id: input.customer_id,
     virtual_key_name: input.virtual_key_name,
     complexity_tier: input.complexity_tier,
+    // `request` is a rate; `request_size` is the body size in bytes. Two distinct
+    // gateway variables, easy to confuse — the inspector labels the first "(rate)".
+    request: input.request,
+    request_size: input.request_size,
     budget_used: input.budget_used,
     tokens_used: input.tokens_used,
-    request: input.request,
     headers: input.headers ?? {},
-    params: {},
+    params: input.params ?? {},
+    // The simulated request arrives now, so the clock is not a playground field.
+    time: { hour: new Date().getHours() },
   };
 
   const triggers = nodes.filter((n) => n.data.kind === 'trigger');
   const projectedRules = workflowToRules(nodes, edges);
   const ruleForTrigger = (t: WFNode) => projectedRules.find((r) => r.id === ((t.data as any).ruleId ?? t.id));
+  const evalNotes: string[] = [];
   const evaluate = (expr: string): boolean => {
-    try {
-      return evalCEL(expr, ctx);
-    } catch {
-      return false;
-    }
+    const out = evaluateCEL(expr, ctx);
+    for (const w of out.warnings) evalNotes.push(w);
+    return out.matched;
   };
 
   const sorted = [...triggers].sort((a, b) => ((a.data as any).priority ?? 0) - ((b.data as any).priority ?? 0));
   const matched = sorted.find((t) => evaluate(ruleForTrigger(t)?.cel_expression ?? (t.data as any).celExpression ?? 'true'));
 
+  const note = (t: WFNode) => {
+    if (evalNotes.length === 0) return undefined;
+    return `not evaluable: ${[...new Set(evalNotes)].join('; ')}`;
+  };
   for (const t of sorted) {
     path.push({
       nodeId: t.id,
       kind: 'trigger',
       label: t.data.label,
       status: t.id === matched?.id ? 'current' : 'pending',
-      note: t.id === matched?.id ? 'condition matched' : 'evaluated, no match',
+      note: t.id === matched?.id ? 'condition matched' : (note(t) ?? 'evaluated, no match'),
     });
   }
 
@@ -1544,23 +1558,6 @@ async function simulate(nodes: WFNode[], edges: Edge[], input: SimInput = DEFAUL
   }
 
   return { matched: true, chosenTarget: (chosenModel ?? chosen).data.label, fallbacksTried, elapsedMs: performance.now() - start, path };
-}
-
-/**
- * Tiny CEL evaluator for the supported subset of variables/operators, used only
- * to drive the mock simulation. NOT a security boundary.
- */
-function evalCEL(expr: string, ctx: Record<string, unknown>): boolean {
-  if (!expr || expr.trim() === 'true') return true;
-  const jsExpr = expr
-    .replace(/\.contains\(/g, '.includes(')
-    .replace(/\.matches\(([^)]+)\)/g, (_m, pattern) => `.match(new RegExp(${pattern}))`);
-  const keys = Object.keys(ctx);
-  const fn = new Function(
-    ...keys,
-    `"use strict"; try { return !!(${jsExpr}); } catch(e){ return false; }`,
-  );
-  return Boolean(fn(...keys.map((k) => ctx[k])));
 }
 
 /** Convenience selector for the currently selected node. */

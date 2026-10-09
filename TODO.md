@@ -17,6 +17,16 @@
       platzieren, nicht skalieren.
 
 ### Priorität mittel
+- [ ] **Unbekannte CEL-Felder beim Parse ablehnen** — `celTokenToField` fällt im `default:`-Zweig still
+      auf `model` zurück. `virtual_key_id == "x"` parst damit zu `model == "x"` ohne jede Warnung.
+      **Nicht blind umsetzen:** ein strenger Parser lässt `celToBifrostQueryObject` öfter `null`
+      liefern, und `ruleShape.queryForWrite` schreibt dann öfter `query: null` in die DB. Erst die
+      Auswirkung auf den Sync messen, dann eigener Commit.
+- [ ] **`RuleChainWizard.quickCelExpression` auf `compileGroup` umstellen** — der Wizard baut CEL per
+      String-Interpolation und damit drei Fehler: numerische Werte werden immer gequotet
+      (`budget_used == "42"`), `time_hour` statt `time.hour` emittiert, und `in` ohne Klammern
+      (`in "a, b"`). Der visuelle Weg über `compileGroup` ist der richtige. Die Datei ist nicht
+      testbar (kein jsdom), deshalb mit manueller Verifikation.
 - [ ] **`query` mit deterministischen ids erzeugen** — `ruleShape.queryForWrite` mintet bei jedem
       Aufruf neue ids (`grp_…`, `r_…`). Deshalb schließt `sync.ts:97` das Feld aus dem
       Write-Fingerprint aus. Mit stabilen ids aus Feld/Op/Wert fiele der Ausschluss weg. **Nicht
@@ -45,6 +55,9 @@
   also keine lokale Ersatzliste mehr, aber weiterhin kein Befund.
 - **Simulation ist ein Mock** — CEL läuft gegen einen festen synthetischen Request-Kontext mit
   randomisierten Ergebnissen. Sie zeigt den Pfad, keine Live-Kapazität.
+- **Header-Lookup in der Simulation ist case-insensitiv** — `headers["X-Tier"]` findet `x-tier`.
+  HTTP verlangt das, aber ob echtes Bifrost es auch so macht, ist **nicht** gegen ein echtes Gateway
+  verifiziert. Bei Abweichung entscheidet die Simulation anders als das Gateway.
 - **Browser-Sreibmodell** — im File-Modus schreibt „Save" in die In-Memory-DB plus den
   IndexedDB-Cache, „Download" erzeugt die geänderte `.sqlite`. Zurück an einen beliebigen Pfad
   schreiben kann der Browser nicht.

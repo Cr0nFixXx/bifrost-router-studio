@@ -8,6 +8,7 @@ import {
   modelCandidates,
   modelValueForSelection,
   providerOptions,
+  resolveFallbackEdit,
   splitModelId,
   stripProviderPrefix,
 } from './modelRefs';
@@ -83,5 +84,47 @@ describe('modelRefs', () => {
       'my-local-alias',
     );
     expect(ids).toEqual(['openai', 'azure', 'vercel', 'my-local-alias']);
+  });
+});
+
+/**
+ * `updateFb` in the fallback editor passed only two arguments to `providerOptions`,
+ * so a provider that was neither configured nor in the catalog could not survive an
+ * edit: inference returned null, `fallbackFromParts` got an empty provider, and the
+ * entry became `''` while the dropdown still offered the very value being typed.
+ */
+describe('resolveFallbackEdit', () => {
+  const catalog = [{ provider: 'openai' }];
+
+  it('infers the provider from the model prefix', () => {
+    expect(resolveFallbackEdit('', { model: 'openai/gpt-4o' }, [], catalog)).toBe('openai/gpt-4o');
+  });
+
+  it('keeps a provider that is in neither config nor catalog', () => {
+    const current = 'mein-provider/gpt-4o';
+    const out = resolveFallbackEdit(current, { model: 'gpt-4o' }, [], catalog);
+    expect(out).toBe('mein-provider/gpt-4o');
+  });
+
+  it('does not drop the entry when the provider is unknown and the model is empty', () => {
+    expect(resolveFallbackEdit('mein-provider/', { model: '' }, [], [])).toBe('mein-provider/');
+  });
+
+  it('lets an explicit provider win over inference', () => {
+    expect(resolveFallbackEdit('openai/gpt-4o', { provider: 'anthropic' }, [], catalog)).toBe('anthropic/gpt-4o');
+  });
+
+  it('strips the provider prefix from the model', () => {
+    expect(resolveFallbackEdit('openai/gpt-4o', { model: 'openai/gpt-4o-mini' }, [], catalog)).toBe('openai/gpt-4o-mini');
+  });
+
+  it('keeps a pinned key across a model edit', () => {
+    const current = { provider: 'openai', model: 'gpt-4o', key_id: 'sk-1' };
+    expect(resolveFallbackEdit(current, { model: 'gpt-4o-mini' }, [], catalog))
+      .toEqual({ provider: 'openai', model: 'gpt-4o-mini', key_id: 'sk-1' });
+  });
+
+  it('returns an empty entry only when there is genuinely nothing left', () => {
+    expect(resolveFallbackEdit('', { model: '' }, [], catalog)).toBe('');
   });
 });

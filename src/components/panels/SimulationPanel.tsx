@@ -36,6 +36,34 @@ function parseHeaders(text: string): { headers: Record<string, string>; invalid:
   return { headers, invalid };
 }
 
+const KeyValueEditor = ({
+  label, code, text, onText, onCommit, invalid, placeholder,
+}: {
+  label: string;
+  code: string;
+  text: string;
+  onText: (v: string) => void;
+  onCommit: (parsed: ReturnType<typeof parseHeaders>) => void;
+  invalid: string[];
+  placeholder: string;
+}) => (
+  <div>
+    <label className="text-[10px] text-ink-faint">{label}: <code>{code}</code></label>
+    <textarea
+      className="input text-xs font-mono h-16 resize-none mt-1"
+      value={text}
+      onChange={(e) => onText(e.target.value)}
+      onBlur={() => onCommit(parseHeaders(text))}
+      placeholder={placeholder}
+    />
+    {invalid.length > 0 && (
+      <div className="mt-1 text-[10px] text-neon-amber">
+        Ignored line(s) without <code>:</code>: {invalid.join(', ')}
+      </div>
+    )}
+  </div>
+);
+
 export function SimulationPanel() {
   const run = useStore((s) => s.runSimulation);
   const clear = useStore((s) => s.clearSimulation);
@@ -47,16 +75,29 @@ export function SimulationPanel() {
   const resetInput = useStore((s) => s.resetSimInput);
   const rules = useStore((s) => s.getCanvasRules());
   const [headersText, setHeadersText] = useState(() => formatHeaders(input.headers));
+  const [paramsText, setParamsText] = useState(() => formatHeaders(input.params));
   const [invalidHeaderLines, setInvalidHeaderLines] = useState<string[]>([]);
+  const [invalidParamLines, setInvalidParamLines] = useState<string[]>([]);
 
   useEffect(() => {
     setHeadersText(formatHeaders(input.headers));
   }, [input.headers]);
 
+  useEffect(() => {
+    setParamsText(formatHeaders(input.params));
+  }, [input.params]);
+
   const commitHeaders = () => {
     const parsed = parseHeaders(headersText);
     setInvalidHeaderLines(parsed.invalid);
     setInput({ headers: parsed.headers });
+    return parsed;
+  };
+
+  const commitParams = () => {
+    const parsed = parseHeaders(paramsText);
+    setInvalidParamLines(parsed.invalid);
+    setInput({ params: parsed.headers });
     return parsed;
   };
 
@@ -92,28 +133,26 @@ export function SimulationPanel() {
           <PlayField label="Customer" value={input.customer_id} onChange={(v) => setInput({ customer_id: v })} />
           <PlayNumber label="Budget %" value={input.budget_used} onChange={(v) => setInput({ budget_used: v })} />
           <PlayNumber label="Tokens" value={input.tokens_used} onChange={(v) => setInput({ tokens_used: v })} />
+          <PlayNumber label="Request size" value={input.request_size} onChange={(v) => setInput({ request_size: v })} />
         </div>
-        <div>
-          <label className="text-[10px] text-ink-faint">Headers, one per line: <code>key: value</code></label>
-          <textarea
-            className="input text-xs font-mono h-20 resize-none mt-1"
-            value={headersText}
-            onChange={(e) => setHeadersText(e.target.value)}
-            onBlur={commitHeaders}
-            placeholder={'user-agent: claude-cli\nx-tier: premium'}
+        <div className="space-y-3">
+          <KeyValueEditor
+            label="Headers, one per line" code="key: value"
+            text={headersText} onText={setHeadersText} onCommit={commitHeaders}
+            invalid={invalidHeaderLines} placeholder={'user-agent: claude-cli\nx-tier: premium'}
           />
-          {invalidHeaderLines.length > 0 && (
-            <div className="mt-1 text-[10px] text-neon-amber">
-              Ignored header line(s) without <code>:</code>: {invalidHeaderLines.join(', ')}
-            </div>
-          )}
+          <KeyValueEditor
+            label="Params, one per line" code="params[&quot;name&quot;] == &quot;value&quot;"
+            text={paramsText} onText={setParamsText} onCommit={commitParams}
+            invalid={invalidParamLines} placeholder={'stream: true'}
+          />
         </div>
         <div className="flex items-center justify-between gap-2">
           <label className="flex items-center gap-2 text-xs text-ink-muted">
             <input type="checkbox" checked={input.forcePrimaryFailure} onChange={(e) => setInput({ forcePrimaryFailure: e.target.checked })} className="accent-neon" />
             Force primary failure to test fallbacks
           </label>
-          <button onClick={() => { resetInput(); setInvalidHeaderLines([]); }} className="text-[11px] text-ink-faint hover:text-ink">Reset</button>
+          <button onClick={() => { resetInput(); setInvalidHeaderLines([]); setInvalidParamLines([]); }} className="text-[11px] text-ink-faint hover:text-ink">Reset</button>
         </div>
       </div>
 

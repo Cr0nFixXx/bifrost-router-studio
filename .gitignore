@@ -11,3 +11,4 @@ dist-ssr
 data/*.sqlite
 *-workspace/
 CLAUDE.local.md
+.vibecheck

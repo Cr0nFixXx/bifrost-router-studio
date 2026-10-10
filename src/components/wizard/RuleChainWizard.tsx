@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Modal, Button, Chip } from '@/components/ui/primitives';
-import { CEL_FIELDS, compileGroup, newCondition, newGroup, opsForField, parseExpression, validateCEL } from '@/lib/cel';
+import { CEL_FIELDS, compileCondition, compileGroup, newCondition, newGroup, opsForField, parseExpression, validateCEL } from '@/lib/cel';
 import { fallbackFromParts, fallbackToParts } from '@/lib/modelRefs';
 import { newId } from '@/lib/nodeFactory';
 import { rulesToWorkflow } from '@/lib/bifrostMapper';
@@ -109,17 +109,9 @@ export function RuleChainWizard() {
     }, 200);
   };
 
-  const quickCelExpression = (): string => {
-    if (form.field === 'header' || form.field === 'param') {
-      const base = form.field === 'header' ? 'headers' : 'params';
-      return `${base}["${form.headerName}"] ${form.op} "${form.value}"`;
-    }
-    return `${form.field} ${form.op} "${form.value}"`;
-  };
-
   const celExpression = (): string => {
-    if (form.triggerKind === 'complexity') return `complexity_tier == "${form.tier}"`;
-    return form.celExpression.trim() || quickCelExpression();
+    if (form.triggerKind === 'complexity') return compileCondition('complexity_tier', '==', form.tier);
+    return form.celExpression.trim() || compileCondition(form.field, form.op, form.value, form.headerName);
   };
 
   const create = () => {
@@ -296,7 +288,7 @@ export function RuleChainWizard() {
                     <input className="input" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder="premium" />
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => setForm({ ...form, celExpression: quickCelExpression() })}>
+                <Button size="sm" variant="outline" onClick={() => setForm({ ...form, celExpression: compileCondition(form.field, form.op, form.value, form.headerName) })}>
                   <Wand2 size={13} /> Use quick condition
                 </Button>
               </div>

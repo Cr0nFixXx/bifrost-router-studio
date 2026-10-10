@@ -181,6 +181,18 @@ export function compileGroup(group: CELGroup): string {
   return parts.join(` ${group.combinator} `);
 }
 
+/**
+ * Compile one field/op/value triple as a single-condition expression.
+ *
+ * The caller's alternative is string interpolation, and that is how the wizard
+ * produced `budget_used == "42"`, `time_hour == "9"` and `in "a, b"` — none of
+ * which the gateway accepts. Every emitter of a condition string must come
+ * through here so quoting, indices and list syntax stay in one place.
+ */
+export function compileCondition(field: CELField, op: CELComparison, value: string, headerName?: string): string {
+  return compileGroup({ id: 'grp', combinator: '&&', conditions: [{ id: 'cond', field, op, value, headerName }] });
+}
+
 export { compileGroup as compile };
 
 /* ----------------------- parse (recursive descent) ----------------- */

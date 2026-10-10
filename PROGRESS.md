@@ -1406,6 +1406,39 @@ schrieb nichts"). Drei weitere Call-Sites vertrauten dem Snapshot trotzdem:
 - Noch **nicht** manuell geprüft: der Export-Fall im Browser (Canvas-Edit → LiteLLM-YAML → neuer
   Name in der Datei). Der Test pinnt die Projektion, nicht den Klickpfad.
 
+## v0.2.9 Build 26101019 — der Wizard baut CEL jetzt über `compileGroup` ✅
+
+### Auslöser
+Der Rest aus Runde 2: `RuleChainWizard.quickCelExpression`, in `TODO.md` notiert als „echter Bug,
+nicht testbar". Der zweite Teil war falsch.
+
+### Der Fehler
+Der Wizard baute seinen Ausdruck per String-Interpolation:
+
+```
+${form.field} ${form.op} "${form.value}"
+```
+
+Daraus kamen drei Dinge, die das Gateway nicht liest:
+- `budget_used == "42"` — numerische Felder erwarten eine Zahl, nicht einen String
+- `time_hour == "9"` — `time_hour` ist der Union-Name, die Gateway-Variable heißt `time.hour`
+- `complexity_tier in "a, b"` — `in` braucht eine Liste in Klammern
+
+Der visuelle Pfad im selben Wizard nutzte `applyCelGroup` → `compileGroup`. Also zwei
+Erzeugungswege, verschiedene Ergebnisse, für denselben Zweck: der Wizard konnte eine Regel
+bauen, die der Editor nie gebaut hätte.
+
+### Der Fix — und warum doch testbar
+Nicht jsdom. `compileCondition(field, op, value, headerName)` in `cel.ts` ist die einzige
+Stelle, die einen Bedingungs-String erzeugt, und `quickCelExpression` ist ersetzt. Die
+Entscheidung lag nie im Wizard — sie lag nirgends, sie war Copy-Paste-String-Formatierung.
+Liegt sie in `cel.ts`, ist sie mit dem Rest testbar, ohne die Testumgebung anzufassen.
+
+### Verifikation
+190 Tests in 19 Dateien (8 neue). Der entscheidende Fall ist der letzte: für jedes Feld und
+jeden erlaubten Operator muss das Ergebnis warnungsfrei zurück-parsen. Der Test hätte
+`time_hour` und das ungeklammerte `in` sofort gefangen.
+
 ## v0.2.9 Build 26100823 — `cel.ts` wird Ausführungs- und Vokabular-Autorität ✅
 
 ### Auslöser

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.9 — Build 26101019
+
+- **The rule wizard no longer builds CEL the gateway cannot read.** It assembled its
+  expressions by string interpolation instead of going through the same compiler the
+  editor uses, which emitted `budget_used == "42"` (the gateway wants a number),
+  `time_hour == "9"` (not a gateway variable at all) and `in "a, b"` (the gateway wants
+  `["a", "b"]`). A rule built in the wizard could fail where the identical rule built in
+  the editor worked. Every emitter of a condition string now goes through `cel.ts`.
+
 ## 0.2.9 — Build 26100823
 
 - **The simulation no longer decides differently from the gateway.** Conditions using `in`,

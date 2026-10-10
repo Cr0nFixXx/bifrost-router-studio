@@ -22,11 +22,6 @@
       **Nicht blind umsetzen:** ein strenger Parser lässt `celToBifrostQueryObject` öfter `null`
       liefern, und `ruleShape.queryForWrite` schreibt dann öfter `query: null` in die DB. Erst die
       Auswirkung auf den Sync messen, dann eigener Commit.
-- [ ] **`RuleChainWizard.quickCelExpression` auf `compileGroup` umstellen** — der Wizard baut CEL per
-      String-Interpolation und damit drei Fehler: numerische Werte werden immer gequotet
-      (`budget_used == "42"`), `time_hour` statt `time.hour` emittiert, und `in` ohne Klammern
-      (`in "a, b"`). Der visuelle Weg über `compileGroup` ist der richtige. Die Datei ist nicht
-      testbar (kein jsdom), deshalb mit manueller Verifikation.
 - [ ] **`query` mit deterministischen ids erzeugen** — `ruleShape.queryForWrite` mintet bei jedem
       Aufruf neue ids (`grp_…`, `r_…`). Deshalb schließt `sync.ts:97` das Feld aus dem
       Write-Fingerprint aus. Mit stabilen ids aus Feld/Op/Wert fiele der Ausschluss weg. **Nicht

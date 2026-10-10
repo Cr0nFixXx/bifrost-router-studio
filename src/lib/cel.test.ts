@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   compileGroup, parseExpression, validateCEL, newGroup,
-  CEL_FIELDS, ALL_OPS, opsForField, queryFieldName, evaluateCEL,
+  CEL_FIELDS, ALL_OPS, opsForField, queryFieldName, evaluateCEL, compileCondition,
 } from './cel';
 import type { CELCondition, CELField } from '@/types/bifrost';
 
@@ -251,5 +251,56 @@ describe('cel evaluator', () => {
   it('short-circuits a satisfied OR even when the other branch is undecidable', () => {
     const out = evaluateCEL('request_size > 1000 || model == "gpt-4o"', ctx);
     expect(out.matched).toBe(true);
+  });
+});
+
+/**
+ * The rule wizard used to assemble these strings itself:
+ *   `${form.field} ${form.op} "${form.value}"`
+ * which produced `budget_used == "42"` (the gateway wants a number),
+ * `time_hour == "9"` (not a gateway variable at all) and `in "a, b"`
+ * (the gateway wants `["a", "b"]`). The wizard was the only emitter that
+ * did not go through `compileGroup`, so it could produce rules the editor
+ * would never build.
+ */
+describe('compileCondition', () => {
+  it('quotes string values', () => {
+    expect(compileCondition('model', '==', 'gpt-4o')).toBe('model == "gpt-4o"');
+  });
+
+  it('leaves numeric values unquoted', () => {
+    expect(compileCondition('budget_used', '>', '42')).toBe('budget_used > 42');
+  });
+
+  it('emits time.hour, not time_hour', () => {
+    expect(compileCondition('time_hour', '>=', '9')).toBe('time.hour >= 9');
+  });
+
+  it('wraps `in` values in a list', () => {
+    expect(compileCondition('complexity_tier', 'in', 'COMPLEX, REASONING'))
+      .toBe('complexity_tier in ["COMPLEX", "REASONING"]');
+  });
+
+  it('indexes headers and params by name', () => {
+    expect(compileCondition('header', '==', 'premium', 'x-tier')).toBe('headers["x-tier"] == "premium"');
+    expect(compileCondition('param', '==', 'true', 'stream')).toBe('params["stream"] == "true"');
+  });
+
+  it('escapes a quote in the value instead of breaking the expression', () => {
+    expect(compileCondition('model', '==', 'say "hi"')).toBe('model == "say \\"hi\\""');
+  });
+
+  it('routes string methods through the emitter', () => {
+    expect(compileCondition('model', 'startsWith', 'gpt-4')).toBe('model.startsWith("gpt-4")');
+  });
+
+  it('produces an expression the parser reads back unchanged', () => {
+    for (const [field, spec] of Object.entries(CEL_FIELDS)) {
+      for (const op of opsForField(field as CELField)) {
+        const value = op === 'in' ? 'a, b' : spec.numeric ? '42' : 'premium';
+        const out = compileCondition(field as CELField, op, value, 'x-tier');
+        expect(parseExpression(out).warnings, `${field} ${op}`).toEqual([]);
+      }
+    }
   });
 });

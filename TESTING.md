@@ -14,7 +14,7 @@ npm run build      # tsc --noEmit + vite build
 
 ## Test-Landkarte
 
-182 Tests in 19 Dateien.
+190 Tests in 19 Dateien.
 
 | Testdatei | Tests | Deckt ab |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ npm run build      # tsc --noEmit + vite build
 | `syncNow.test.ts` | 7 | `useStore` gegen ein Fake-Gateway: Push, No-op, Priority-Tausch, Teilfehler |
 | `rules.test.ts` | 2 | eine Projektion: Reorder und Canvas-Edit sind sofort in `getCanvasRules()` sichtbar |
 | `bifrostApi.test.ts` | 5 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination, `/api/providers`-Shape |
-| `cel.test.ts` | 34 | Parser/Compiler, Visual↔CEL Round-Trip, Feldtabelle, AST-Evaluator |
+| `cel.test.ts` | 42 | Parser/Compiler, Visual↔CEL Round-Trip, Feldtabelle, AST-Evaluator, `compileCondition` |
 | `simulation.test.ts` | 7 | `runSimulation` gegen einen echten Canvas: `in`, `time.hour`, `request_size`, `params`, Header-Case |
 | `bifrostMapper.test.ts` | 9 | Graph ⇄ Rules, `rulesToWorkflow` Hydration |
 | `validation.test.ts` | 9 | Diagnostics (Gewichte, Zyklen, CEL, Scopes) |
@@ -46,7 +46,7 @@ hier mit, sonst driftet die Summe.
 Eine Änderung ist fertig, wenn:
 
 1. `npm run typecheck` clean ist (keine `any` in `src/types/*`).
-2. `npm test` grün ist — **182 Tests, 19 Dateien**, keine Auslassungen.
+2. `npm test` grün ist — **190 Tests, 19 Dateien**, keine Auslassungen.
 3. `npm run build` durchläuft.
 4. Für Code, der Routing-Regeln berührt: der Visual↔CEL-Round-Trip hält, und Gewichte summieren
    weiter auf `1`.

@@ -74,11 +74,25 @@ export function validateGraph(nodes: WFNode[], edges: Edge[]): Diagnostic[] {
         detail: `Rule "${t.data.label}" will never route. Connect it to at least one Target node.`,
       });
     } else {
-      // weight sum check
-      const sum = weightSum(outs.map((n) => {
+      // A weight of zero or below is a hard reject on the gateway
+      // (`rejectionReason`, sync.ts) and used to be missing here entirely — the
+      // sum check below happily reports "weights sum to 1" for a target the
+      // gateway will refuse.
+      const weights = outs.map((n) => {
         const d = n.data as { routes?: Array<{ weight?: number }>; weight?: number };
-        return { weight: d.routes?.length ? weightSum(d.routes) : d.weight };
-      }));
+        return d.routes?.length ? weightSum(d.routes) : (d.weight ?? NaN);
+      });
+      if (weights.some((w) => !(w > 0))) {
+        diags.push({
+          id: `weight-nonpositive-${t.id}`,
+          level: 'error',
+          nodeIds: [t.id, ...outs.map((n) => n.id)],
+          title: 'Target weight is zero or below',
+          detail: `Bifrost rejects a rule with a weight ≤ 0. "${t.data.label}" would not be accepted on upload.`,
+        });
+      }
+      // weight sum check
+      const sum = weightSum(weights.map((weight) => ({ weight })));
       if (Math.abs(sum - 1) > WEIGHT_WARN_EPSILON) {
         diags.push({
           id: `weight-${t.id}`,

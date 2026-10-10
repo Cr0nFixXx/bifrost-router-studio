@@ -14,19 +14,20 @@ npm run build      # tsc --noEmit + vite build
 
 ## Test-Landkarte
 
-201 Tests in 19 Dateien.
+217 Tests in 20 Dateien.
 
 | Testdatei | Tests | Deckt ab |
 | --- | --- | --- |
-| `sync.test.ts` | 26 | `sync.ts` Diff/Apply, `bifrostApi.ts` Konverter, Fehlernormalisierung, `providerWarnings` |
+| `sync.test.ts` | 30 | `sync.ts` Diff/Apply, `bifrostApi.ts` Konverter, Fehlernormalisierung, `providerWarnings`, `rejectedForWrite` |
 | `ruleShape.test.ts` | 21 | die geteilten Entscheidungen: Gewichts-Schwellen, Normalisierung, `query` je Pfad, Fallback-Pinning |
 | `syncNow.test.ts` | 7 | `useStore` gegen ein Fake-Gateway: Push, No-op, Priority-Tausch, Teilfehler |
 | `rules.test.ts` | 2 | eine Projektion: Reorder und Canvas-Edit sind sofort in `getCanvasRules()` sichtbar |
+| `connectionSource.test.ts` | 9 | `useStore` Modus-Entscheidung: keine Datei-Session mit `connectionSource: 'api'`, Handle wird ersetzt statt gestapelt, `openSqlBrowser` verweigert ohne Datei |
 | `bifrostApi.test.ts` | 5 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination, `/api/providers`-Shape |
 | `cel.test.ts` | 49 | Parser/Compiler, Visual↔CEL Round-Trip, Feldtabelle, AST-Evaluator, `compileCondition`, nicht modellierte Felder |
 | `simulation.test.ts` | 7 | `runSimulation` gegen einen echten Canvas: `in`, `time.hour`, `request_size`, `params`, Header-Case |
 | `bifrostMapper.test.ts` | 9 | Graph ⇄ Rules, `rulesToWorkflow` Hydration |
-| `validation.test.ts` | 9 | Diagnostics (Gewichte, Zyklen, CEL, Scopes) |
+| `validation.test.ts` | 12 | Diagnostics (Gewichte inkl. ≤ 0, Zyklen, CEL, Scopes) |
 | `gatewayExport.test.ts` | 8 | LiteLLM-YAML, OpenAI-Model-Groups |
 | `diff.test.ts` | 6 | Canvas-vs-DB-Diff |
 | `modelRefs.test.ts` | 17 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
@@ -86,3 +87,16 @@ Diese Punkte sind noch nicht durch einen automatisierten Test abgedeckt:
 Fallstricke, die Tests typischerweise nicht fangen, stehen in
 [`CLAUDE.md`](./CLAUDE.md#fallstricke-gotchas) — dort liegen auch die API-Constraints, an denen
 ein Test schweigend vorbeiläuft.
+
+- **Store-Aktionen, die eine Datenbank öffnen, sind nicht direkt testbar.**
+  `BifrostDb.open()` und `createSampleDb()` laden die sql.js-WASM über einen Vite-Asset-Import
+  (`?url`); unter `environment: 'node'` gibt es dafür keinen Pfad, und der Lauf bricht mit
+  `ENOENT: /node_modules/sql.js/dist/sql-wasm.wasm` ab. Wer den Store-Fluss braucht, mockt die
+  drei DB-Module (`bifrostDb`, `sample`, `persistence`) — siehe `connectionSource.test.ts`.
+  `db/bifrostDb.test.ts` kommt daran vorbei, weil es `BifrostDb.wrap(new SQL.Database())` direkt
+  benutzt statt den Loader.
+- **Ein grüner Lauf beweist nicht, dass ein Test etwas prüft.** Für Store-Korrekturen den Fix
+  temporär ausbauen und den Test erneut laufen lassen. Bei `openFileSource` fielen so 3 von 9
+  Fällen; die anderen 6 prüften die Rückrichtung, die vorher schon korrekt war.
+- **`console.log` in einem Test wird nicht angezeigt.** Um den echten Wert zu sehen, den
+  erwarteten Wert absichtlich falsch setzen — der Assertion-Diff zeigt beide.

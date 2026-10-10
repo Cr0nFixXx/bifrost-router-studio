@@ -54,6 +54,21 @@ export function rejectionReason(rule: RoutingRule): string | null {
 }
 
 /**
+ * The rules Bifrost would refuse on write — the same answer for both modes.
+ *
+ * `rejectionReason` above is this list for the API batch, and there it is hard:
+ * one 400 aborts the batch. The file path had nothing. `saveToDb` wrote whatever
+ * the canvas said, the `.sqlite` was downloaded, and the 400 arrived on a real
+ * gateway — with no name attached to it. Downloading is the step that leaves the
+ * studio, so that is where the check belongs; see `downloadDb`.
+ */
+export function rejectedForWrite(rules: readonly RoutingRule[]): RuleRejection[] {
+  return rules
+    .map((rule) => ({ id: rule.id, name: rule.name, reason: rejectionReason(rule) }))
+    .filter((r): r is RuleRejection => r.reason !== null);
+}
+
+/**
  * Non-blocking hints about providers the model catalog does not list.
  *
  * Deliberately not a validation and deliberately not a blocker. The gateway owns

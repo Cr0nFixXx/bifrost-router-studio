@@ -1633,3 +1633,68 @@ verändert. Ein Objekt bleibt jetzt ein Objekt.
 - `gateway-smoke`: **31/31**. Geprüft wurde unter anderem „Ungültige Gewichte werden abgewiesen
   statt gepusht" — das ist die Schnittstelle zwischen `rejectionReason` mit
   `WEIGHT_GATE_EPSILON` und dem, was der Mock antwortet.
+
+## v0.2.9 Build 26101020 — Kandidat C: die Prämisse fiel, drei Befunde kamen dafür ✅
+
+### Ausgangslage
+Kandidat C stand aus dem Architektur-Review als „RuleSource-Seam: 141 `StudioState`-Members,
+28 Modus-ifs, 2–4 h". **Vor der Umsetzung nachgemessen, und die Prämisse hält nicht:**
+
+| Behauptung | Befund |
+| --- | --- |
+| 28 Modus-ifs | **2** echte `connectionSource`-Vergleiche. Die 33 `activeDb`-Treffer sind `if (!db) return` — Guards, keine Verzweigung |
+| Seam fehlt | `ruleShape.ts` **ist** der Seam, deckt die drei echten Dualitäten (weights, fallbacks, query) |
+| `syncNow`/`saveToDb` = zwei Modi einer Funktion | Nein. Bidirektionaler Sync gegen `UNIQUE(scope, priority)` vs. Totalersetzung einer lokalen Datei. Gemeinsamer Kern: **eine Zeile** |
+| 141 Members | 140, davon 44 Actions in zwei Domänen (UI, Canvas). Zustands-Flachgewicht, kein Fehlerverhalten |
+
+Ein Interface für die zwei Modi hätte zwei Implementierungen mit einer gemeinsamen Teilmenge
+von einer Zeile. Der Store bleibt. Das Nachmessen hat stattdessen drei echte Fehler gefunden,
+die alle im Datei-Modus liegen und eine Wurzel teilen: **der Datei-Modus hat keinen Fehlerkanal.**
+
+### Was geändert wurde
+- [x] `openFileSource(db)` in `useStore.ts` — setzt `activeDb`, `activeApi` und
+      `connectionSource` zusammen. Vier Connect-Pfade, die sich vorher einzeln erinnerten.
+      `openApiSession` räumt symmetrisch auf.
+- [x] `clearError` + Fehler-Banner im TopBar (`role="alert"`, `bg-neon-red/10`,
+      dismissbar). Der `alert()`-Aufruf beim Import ist dadurch ersetzt.
+- [x] `saveToDb` wirft nicht mehr. `TopBar:268` rief es direkt als `onClick` ohne `catch` —
+      ein Schreibfehler war ein Uncaught Error im Event-Handler.
+- [x] `rejectedForWrite(rules)` in `sync.ts` — dieselbe Liste, die `rejectionReason` dem
+      API-Batch gibt, jetzt auch für den Download. `downloadDb` verweigert bei Treffern und
+      nennt Regel **und** Grund. `saveToDb` bleibt offen: ein Editor darf unfertig stehen.
+- [x] `validateGraph`: **Gewicht ≤ 0** ist jetzt ein error. Der Summen-Check hat es
+      durchgelassen (0 + 1 = 1), `rejectionReason` lief im Datei-Modus nie.
+- [x] `openSqlBrowser()` prüft den Handle im Store. `disabled={isApi}` am Button war der
+      einzige Schutz, drei Ebenen über dem Panel, das `activeDb?.… ?? []` liest — eine leere
+      Tabelle, die wie eine leere Datenbank aussieht.
+
+### Drei Tests, die ohne den Fix fallen
+`src/store/connectionSource.test.ts` (9 Fälle) mockt `BifrostDb.open`/`createSampleDb` —
+die laden die sql.js-WASM über einen Vite-Asset-Import, für den es unter vitests
+`environment: 'node'` keinen Pfad gibt (`ENOENT: /node_modules/sql.js/dist/sql-wasm.wasm`).
+Gegengeprüft: mit aufgehobenem `openFileSource`-Body fallen **3 von 9**. Die anderen 6 prüfen
+die Rückrichtung (Gateway über Datei), die vorher schon stimmte.
+
+Ein Detail, das beim Bauen auffiel: `downloadDb` prüft `activeDb.listRules()`, **nicht**
+`getCanvasRules()`. Der Download exportiert `activeDb.exportBytes()` — die Bytes sind die der
+DB, eine ungespeicherte Canvas-Änderung steckt noch nicht drin. Der Canvas-Check wäre eine
+Aussage über eine Datei, die so nicht entsteht.
+
+### Validierung
+- `npm run typecheck` clean, `npm run build` erfolgreich.
+- Vitest: **217 Tests in 20 Dateien**, grün (vorher 201 in 19).
+- `gateway-smoke`: **31/31** — unangetastet, `bifrostApi.ts`/`sync.ts` haben nur eine additive
+  Funktion bekommen.
+
+### Abgelehnt
+- **Store in 5 Sub-Stores aufteilen.** Die ursprüngliche C-Idee. Kein Fehlerverhalten —
+  Rendite, nicht Korrektheit; verdient eine eigene Runde mit eigener Begründung.
+- **`rejectionReason` in `validateGraph` aufhängen.** `validateGraph` prüft den **Graphen**
+  und kennt `nodeIds`; `rejectionReason` prüft die **Regel**. Der Aufruf bräuchte
+  `workflowToRules` pro `recompute()` — O(Regeln × Knoten) bei jedem Edit — und die
+  Doppelung „keine Targets" müsste aufgelöst werden.
+- **`toWriteShape` ↔ `createNativeRule` schließen.** Echter Befund: `weight: t.weight` roh
+  vs. `Number(t.weight ?? 1)`, `description` fehlt vs. `''`, Boolean→SQL viermal. Richtung
+  ist „`ruleShape.ts` weiterziehen", nicht „drei Fehler".
+- **`TopBar:129` `getDb()` für `keyNameById`** — der config.json-Export verliert im
+  API-Modus still die Key-Pins. Braucht eine Entscheidung, keine Fehlerbehandlung.

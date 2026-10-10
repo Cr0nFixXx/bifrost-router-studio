@@ -103,6 +103,13 @@ each was implemented in four places and the copies had drifted. Mappers stay in 
 (`apiRuleToRouting` transport, `nativeRowToRule` SQL, `normalizeAiDraft` untrusted input); they call
 in here for the decision.
 
+**"What will Bifrost refuse?" is a second question and it has one answer too:**
+`rejectionReason` (per rule) and `rejectedForWrite` (over a list) live in `src/lib/sync.ts`. The API
+batch uses them hard, because one 400 aborts the batch; `downloadDb` uses them to refuse the export.
+Do not write a third weight or `scope_id` check in a caller — `validateGraph` also judges these, but
+on the **graph**, where a zero weight was previously missing entirely while the sum check passed it.
+A weight ≤ 0 is an error on the gateway and has to be an error on the canvas.
+
 ## Custom nodes / edges
 - All nodes render through `canvas/nodes/BaseNode.tsx` (frosted card, accent bar, directional
   ports, diagnostic ring). Node bodies live in `nodes/*`.
@@ -169,6 +176,25 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
   strings. Do not add a provider whitelist to the client — it runs behind the gateway and blocks
   rules that would have worked. `providerWarnings` is a hint shown before the push, deliberately not
   a blocker.
+- **The mode is one decision, not four assignments.** `connectionSource` (reactive state) and the
+  two module handles `activeDb` / `activeApi` have to move together. They were set at five places
+  and four of them forgot the file side: "Open another database" set `activeDb`, left
+  `connectionSource === 'api'` and left the old client alive — so every canvas edit went through
+  `markDirty` → `scheduleSync()` → the gateway the user had just left. Go through `openFileSource()`;
+  do not assign `activeDb` directly, and do not add a sixth connect path that does.
+- **A guard belongs where the fact is, not where the button is.** The SQL browser's file-mode check
+  was `disabled={isApi}` in the TopBar — three levels above the panel that reads `activeDb`, which
+  returned `?? []` and rendered an empty table that looks like an empty database. `openSqlBrowser()`
+  is the only door; `setSqlBrowserOpen(true)` bypasses the reason and stays for `App.tsx`'s close.
+- **`store.error` is the only error channel, and it must have a reader.** It was read by
+  `ConnectScreen` alone, so a failed save was an uncaught error in a React event handler
+  (`onClick={saveToDb}` with `saveToDb` rethrowing) that the user never saw. Set `error`; do not
+  `throw` out of a store action that a component calls directly.
+- **The editor may hold an unfinished rule; the exported file may not.** `saveToDb` writes to an
+  in-memory SQLite and stays unblocked. `downloadDb` is the step that leaves the studio, so it is
+  the one that refuses — via `rejectedForWrite`, the same list `sync.ts` uses for the API batch.
+  Read the DB there, not the canvas: the exported bytes are the DB's, and an unsaved canvas edit is
+  not in them yet.
 - Never round-trip a GET response into POST/PUT. `id`, `created_at`, `updated_at` and `scope` are in
   the read shape but not in any write schema. Go through `toWriteShape` / `toUpdateShape`.
 - `scope`/`scope_id` are absent from the update schema. Moving a rule between scopes is delete +

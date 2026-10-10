@@ -78,4 +78,26 @@ describe('validation engine', () => {
     expect(diags.some((d) => d.level === 'warning' && d.title === 'Rule ID is not a UID')).toBe(true);
   });
 
+  it('errors on a weight of zero, which the gateway rejects outright', () => {
+    // The sum check alone passes this: 0 + 1 sums to 1. `rejectionReason`
+    // (sync.ts) says `!(weight > 0)` is a hard reject, and the studio said
+    // nothing — so the rule reached the file and the 400 arrived on upload.
+    const nodes = [trigger('t'), target('zero', 0), target('one', 1)];
+    const edges = [edge('t', 'zero'), edge('t', 'one')];
+    const diags = validateGraph(nodes, edges);
+    expect(diags.some((d) => d.level === 'error' && d.title === 'Target weight is zero or below')).toBe(true);
+  });
+
+  it('errors on a negative weight', () => {
+    const diags = validateGraph([trigger('t'), target('neg', -1)], [edge('t', 'neg')]);
+    expect(diags.some((d) => d.level === 'error' && d.title === 'Target weight is zero or below')).toBe(true);
+  });
+
+  it('does not fire on a well-formed weight split', () => {
+    const nodes = [trigger('t'), target('a', 0.5), target('b', 0.5)];
+    const edges = [edge('t', 'a'), edge('t', 'b')];
+    const diags = validateGraph(nodes, edges);
+    expect(diags.some((d) => d.level === 'error' && d.title === 'Target weight is zero or below')).toBe(false);
+  });
+
 });

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.9 — Build 26101020
+
+- **Opening a file no longer leaves the studio writing to a gateway you left.** "Open
+  another database" set the file handle but not `connectionSource`, and kept the old
+  gateway client alive. Every canvas edit then went through the auto-sync debounce to
+  that gateway. The mode is now one decision in `openFileSource()`; four connect paths
+  that each half-remembered it call it.
+- **A failed save is now a message instead of an uncaught error.** `store.error` had
+  exactly one reader — the connect screen. In the connected state a write failure was a
+  rethrow into a React event handler, and the import error used `alert()`. The TopBar
+  shows the store's error as a dismissible banner.
+- **The download refuses rules the gateway would reject.** The file mode wrote whatever
+  the canvas said; the 400 arrived on a real gateway with no rule name attached. Saving
+  still works — an editor may hold an unfinished rule — but downloading does not.
+- **A target weight of zero is an error on the canvas.** The weight-sum check passed it,
+  and `rejectionReason` never ran outside the API mode. Bifrost rejects it outright.
+- **The SQL browser no longer opens on an empty database.** Its file-mode check was
+  `disabled` on a button three levels above the panel; from anywhere else the panel
+  rendered an empty table that reads like an empty database. The store decides now.
+
 ## 0.2.9 — Build 26101019
 
 - **A condition on a field the studio does not model no longer changes meaning on the

@@ -43,6 +43,7 @@ import {
   diffRules as diffRulesForSync,
   diffIsEmpty,
   providerWarnings,
+  rejectedForWrite,
 } from '@/lib/sync';
 import { useUserSettings } from '@/store/useUserSettings';
 import {
@@ -154,6 +155,11 @@ interface StudioState {
   dbKind: string | null;
   busy: boolean;
   dirty: boolean;
+  /**
+   * Der Fehlerkanal des verbundenen Zustands. `ConnectScreen` liest ihn beim
+   * Verbinden — alles danach hatte bis hierher keinen Leser, und ein Fehler beim
+   * Speichern war ein Uncaught Error im Event-Handler statt einer Meldung.
+   */
   error: string | null;
 
   /* graph */
@@ -277,6 +283,17 @@ interface StudioState {
   setDashboardOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setSqlBrowserOpen: (open: boolean) => void;
+  /**
+   * The one door into the SQL browser.
+   *
+   * `setSqlBrowserOpen(true)` was reachable from anywhere once a caller
+   * skipped the `disabled` attribute in the TopBar, and the panel then showed
+   * an empty table — `listRoutingRulesTableRows` falls back to `?? []` when no
+   * handle is open, which reads exactly like an empty database. The check
+   * belongs where the handle is, not three levels up in a button.
+   */
+  openSqlBrowser: () => void;
+  clearError: () => void;
   setHelpOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
@@ -343,6 +360,27 @@ export const getApi = () => activeApi;
 const snapshot = (s: StudioState): HistorySnapshot => ({ nodes: s.nodes, edges: s.edges });
 
 /**
+ * Der Modus ist eine Entscheidung, keine Beobachtung.
+ *
+ * `connectionSource` und die beiden Handles mussten an fünf Stellen zusammen
+ * gesetzt werden, und vier davon haben es vergessen. Der Folgefehler ist
+ * Datenverlust: „Open another database" setzt `activeDb`, lässt aber
+ * `connectionSource === 'api'` stehen — jeder Canvas-Edit geht dann über
+ * `markDirty` an das Gateway, das der Nutzer gerade verlassen hat. Zusätzlich
+ * bleibt `activeApi` als Handle übrig, den kein Pfad mehr leert.
+ *
+ * Deshalb: jede Quelle kommt hier rein, und `activeApi` stirbt mit.
+ */
+function openFileSource(db: BifrostDb | null): void {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = null;
+  activeDb?.close();
+  activeDb = db;
+  activeApi = null;
+  useStore.setState({ connectionSource: 'file', apiLabel: null, syncFailuresOpen: false });
+}
+
+/**
  * Pull rules from a live gateway and rebuild the canvas from them. Same path
  * `refreshFromDb` takes for a file — the canvas, inspector, validation and undo
  * do not care which of the two sources filled them.
@@ -354,8 +392,11 @@ async function openApiSession(transport: ApiTransport, label: string): Promise<v
   try {
     // Throws BifrostApiError(status 0) when the bridge or gateway is down.
     const rules = await api.listRules();
-    activeApi = api;
+    // Tear down whatever file was open before taking the gateway. Symmetric to
+    // `openFileSource`, which does the same for a stale client.
+    activeDb?.close();
     activeDb = null;
+    activeApi = api;
     const routingRules = rules.map(apiRuleToRouting);
     const { nodes, edges } = rulesToWorkflow(routingRules, { dedupeConditions: !store.expertMode });
     useStore.setState({
@@ -534,10 +575,11 @@ export const useStore = create<StudioState>((set, get) => ({
     set({ connection: 'connecting', busy: true, error: null });
     try {
       const buf = new Uint8Array(await file.arrayBuffer());
-      activeDb = await BifrostDb.open(buf);
-      set({ dbFileName: file.name, dbKind: activeDb.detectKind(), connection: 'connected', busy: false });
+      const db = await BifrostDb.open(buf);
+      openFileSource(db);
+      set({ dbFileName: file.name, dbKind: db.detectKind(), connection: 'connected', busy: false });
       get().refreshFromDb();
-      await cacheDb(activeDb.exportBytes(), file.name);
+      await cacheDb(db.exportBytes(), file.name);
     } catch (err) {
       set({ error: (err as Error).message, connection: 'disconnected', busy: false });
     }
@@ -546,7 +588,7 @@ export const useStore = create<StudioState>((set, get) => ({
   connectSample: async () => {
     set({ connection: 'connecting', busy: true, error: null });
     try {
-      activeDb = await createSampleDb();
+      openFileSource(await createSampleDb());
       set({ dbFileName: 'sample-bifrost.db', dbKind: 'bifrost-routing', connection: 'connected', busy: false });
       get().refreshFromDb();
     } catch (err) {
@@ -557,7 +599,7 @@ export const useStore = create<StudioState>((set, get) => ({
   createNew: async () => {
     set({ connection: 'connecting', busy: true, error: null });
     try {
-      activeDb = await BifrostDb.open();
+      openFileSource(await BifrostDb.open());
       set({ dbFileName: 'untitled-bifrost.db', dbKind: 'empty', connection: 'connected', busy: false });
       get().refreshFromDb();
     } catch (err) {
@@ -661,8 +703,9 @@ export const useStore = create<StudioState>((set, get) => ({
     try {
       const cached = await loadCachedDb();
       if (!cached) throw new Error('No cached session');
-      activeDb = await BifrostDb.open(cached.bytes);
-      set({ dbFileName: cached.fileName, dbKind: activeDb.detectKind(), connection: 'connected', busy: false });
+      const db = await BifrostDb.open(cached.bytes);
+      openFileSource(db);
+      set({ dbFileName: cached.fileName, dbKind: db.detectKind(), connection: 'connected', busy: false });
       get().refreshFromDb();
     } catch (err) {
       set({ error: (err as Error).message, connection: 'disconnected', busy: false });
@@ -732,13 +775,29 @@ export const useStore = create<StudioState>((set, get) => ({
       set({ providers: activeDb.listProviders(), dirty: false, busy: false });
       get().recompute();
     } catch (err) {
-      set({ error: (err as Error).message, busy: false });
-      throw err;
+      // No `throw`: the Save button calls this straight from an onClick, so a
+      // throw here was an uncaught error in the event handler and the message
+      // never reached the screen. The banner is the channel.
+      set({ error: `Speichern fehlgeschlagen: ${(err as Error).message}`, busy: false });
     }
   },
 
   downloadDb: () => {
     if (!activeDb) return;
+    // The editor may hold an unfinished rule; the exported file may not. These
+    // are the rules the gateway answers 400 for, and the download is the step
+    // that leaves the studio. Read the DB, not the canvas — the bytes being
+    // exported are the DB's, and an unsaved canvas edit is not in them yet.
+    const rejected = rejectedForWrite(activeDb.listRules());
+    if (rejected.length > 0) {
+      set({
+        error:
+          `${rejected.length} Regel(n) würde Bifrost beim Upload ablehnen: ` +
+          `${rejected.map((r) => `${r.name} — ${r.reason}`).join(' · ')}. ` +
+          'Download abgebrochen.',
+      });
+      return;
+    }
     activeDb.ensureRoutingRuleQueries();
     const name = get().dbFileName ?? 'bifrost.db';
     downloadFile(name.replace(/\.(db|sqlite|sqlite3)$/i, '') + '.db', activeDb.exportBytes(), 'application/x-sqlite3');
@@ -1140,6 +1199,18 @@ export const useStore = create<StudioState>((set, get) => ({
   setDashboardOpen: (open) => set({ dashboardOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setSqlBrowserOpen: (open) => set({ sqlBrowserOpen: open }),
+  openSqlBrowser: () => {
+    if (!activeDb) {
+      set({
+        error:
+          'Der SQL Browser liest direkt aus der SQLite-Datei. Im Gateway-Modus gibt es keine Tabelle — ' +
+          'verbinde eine Datei oder benutze die Diff-Ansicht.',
+      });
+      return;
+    }
+    set({ sqlBrowserOpen: true });
+  },
+  clearError: () => set({ error: null }),
   setHelpOpen: (open) => set({ helpOpen: open }),
   setSearchOpen: (open) => set({ searchOpen: open }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),

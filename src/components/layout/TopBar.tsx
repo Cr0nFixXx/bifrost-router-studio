@@ -31,6 +31,8 @@ import {
   Maximize2,
   Cloud,
   RefreshCw,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 import { getDb, useStore } from '@/store/useStore';
 import { useUserSettings } from '@/store/useUserSettings';
@@ -76,7 +78,7 @@ export function TopBar() {
   const setTemplatesOpen = useStore((s) => s.setTemplatesOpen);
   const setDashboardOpen = useStore((s) => s.setDashboardOpen);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
-  const setSqlBrowserOpen = useStore((s) => s.setSqlBrowserOpen);
+  const openSqlBrowser = useStore((s) => s.openSqlBrowser);
   const setHelpOpen = useStore((s) => s.setHelpOpen);
   const setSearchOpen = useStore((s) => s.setSearchOpen);
   const setAiOpen = useAiAssistant((s) => s.setOpen);
@@ -85,6 +87,8 @@ export function TopBar() {
   const setGraph = useStore((s) => s.setGraph);
   const disconnect = useStore((s) => s.disconnect);
   const busy = useStore((s) => s.busy);
+  const error = useStore((s) => s.error);
+  const clearError = useStore((s) => s.clearError);
 
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
@@ -174,7 +178,7 @@ export function TopBar() {
       setGraph(ws.nodes, ws.edges);
       setDirectionLocal(ws.direction);
     } catch (err) {
-      alert('Import failed: ' + (err as Error).message);
+      useStore.setState({ error: `Import fehlgeschlagen: ${(err as Error).message}` });
     } finally {
       e.target.value = '';
     }
@@ -188,6 +192,20 @@ export function TopBar() {
 
   return (
     <header className="relative z-30 min-h-14 shrink-0 glass border-b border-border flex flex-wrap items-center gap-2 px-3 py-2">
+      {error && (
+        <div role="alert" className="w-full flex items-start gap-2 rounded-lg bg-neon-red/10 text-neon-red px-3 py-2 text-xs">
+          <AlertTriangle size={14} className="mt-px shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button
+            type="button"
+            onClick={clearError}
+            aria-label="Fehlermeldung schließen"
+            className="shrink-0 rounded p-0.5 hover:bg-neon-red/20"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
       {/* DB identity */}
       <div className="flex items-center gap-2 min-w-0 max-w-[260px] shrink">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-neon/10 text-neon shrink-0">
@@ -284,7 +302,7 @@ export function TopBar() {
           <BarChart3 size={14} /> <span className="hidden 2xl:inline">Dashboard</span>
         </Button>
 
-        <Button variant="ghost" size="sm" onClick={() => setSqlBrowserOpen(true)} title="Open SQL routing table browser" disabled={isApi}>
+        <Button variant="ghost" size="sm" onClick={openSqlBrowser} title="Open SQL routing table browser">
           <Database size={14} /> <span className="hidden 2xl:inline">SQL</span>
         </Button>
 

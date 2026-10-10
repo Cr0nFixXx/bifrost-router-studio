@@ -17,6 +17,15 @@
       platzieren, nicht skalieren.
 
 ### Priorität mittel
+- [ ] **`toWriteShape` und `createNativeRule` schließen** — dieselbe Regel wird an zwei Orten
+      unabhängig gedreht, mit abweichenden Antworten: `bifrostApi.ts` schreibt `weight: t.weight`
+      roh durch, `bifrostDb.ts` schreibt `Number(t.weight ?? 1)`; `description` fehlt im
+      Write-Shape, ist `''` in der DB-Zeile. Dazu die Boolean→SQL-Coercion viermal. Richtung ist
+      „`ruleShape.ts` konsequent weiterziehen", nicht „irgendwann aufräumen".
+- [ ] **`TopBar` exportiert config.json im API-Modus ohne Key-Namen** — `keyNameById()` kommt
+      über `getDb()`, und im API-Modus ist das `[]`. Die Key-Pins aus `fallbacks` fallen thereby
+      still aus dem Export. Braucht eine Entscheidung (was soll der Export ohne DB tun?), keine
+      Fehlerbehandlung.
 - [ ] **`query` mit deterministischen ids erzeugen** — `ruleShape.queryForWrite` mintet bei jedem
       Aufruf neue ids (`grp_…`, `r_…`). Deshalb schließt `sync.ts:97` das Feld aus dem
       Write-Fingerprint aus. Mit stabilen ids aus Feld/Op/Wert fiele der Ausschluss weg. **Nicht
@@ -52,7 +61,9 @@
   IndexedDB-Cache, „Download" erzeugt die geänderte `.sqlite`. Zurück an einen beliebigen Pfad
   schreiben kann der Browser nicht.
 - **Eine Quelle im Speicher** — zurzeit eine Datenbank oder ein Gateway; ein Wechsel öffnet eine
-  neue Kopie.
+  neue Kopie. Der Modus ist seit Build 26101020 eine Entscheidung (`openFileSource`), aber der
+  Wechsel selbst ist weiterhin destruktiv: eine geöffnete Datei wird beim Gateway-Connect
+  geschlossen, und umgekehrt.
 - **Simulation ohne Live-Daten** — kein Link auf echte Bifrost-Metriken.
 
 ### API-Modus

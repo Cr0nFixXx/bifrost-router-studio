@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiRule, RoutingRule } from '@/types/bifrost';
 import { apiRuleToRouting, toWriteShape } from '@/lib/bifrostApi';
-import { applyDiff, diffIsEmpty, diffRules, planPriorityPhases, providerWarnings, rejectionReason, toUpdateShape } from '@/lib/sync';
+import { applyDiff, diffIsEmpty, diffRules, planPriorityPhases, providerWarnings, rejectedForWrite, rejectionReason, toUpdateShape } from '@/lib/sync';
 
 function rule(patch: Partial<RoutingRule> = {}): RoutingRule {
   return {
@@ -99,6 +99,41 @@ describe('rejectionReason', () => {
     expect(rejectionReason(rule({ targets: [] }))).toMatch(/Targets/);
     expect(rejectionReason(rule({ scope: 'team', scope_id: null }))).toMatch(/scope_id/);
     expect(rejectionReason(rule())).toBeNull();
+  });
+});
+
+describe('rejectedForWrite', () => {
+  it('returns nothing for rules the gateway would accept', () => {
+    expect(rejectedForWrite([rule(), rule({ id: 'r2' })])).toEqual([]);
+  });
+
+  it('names every offending rule, not just the first', () => {
+    const rules = [
+      rule({ id: 'r1', name: 'ok' }),
+      rule({ id: 'r2', name: 'broken weights', targets: [{ provider: 'openai', weight: 0.5 }] }),
+      rule({ id: 'r3', name: 'needs a scope id', scope: 'team', scope_id: null }),
+    ];
+    expect(rejectedForWrite(rules)).toEqual([
+      { id: 'r2', name: 'broken weights', reason: expect.stringMatching(/summieren/) },
+      { id: 'r3', name: 'needs a scope id', reason: expect.stringMatching(/scope_id/) },
+    ]);
+  });
+
+  it('agrees with rejectionReason rule by rule — one list, two callers', () => {
+    const rules = [
+      rule({ id: 'r1', targets: [] }),
+      rule({ id: 'r2', cel_expression: '' }),
+      rule({ id: 'r3', targets: [{ provider: 'openai', weight: 0 }] }),
+      rule({ id: 'r4' }),
+    ];
+    const byId = Object.fromEntries(rules.map((r) => [r.id, rejectionReason(r)]));
+    expect(rejectedForWrite(rules).map((r) => [r.id, r.reason])).toEqual(
+      Object.entries(byId).filter(([, reason]) => reason !== null),
+    );
+  });
+
+  it('rejects a zero weight, which the gateway does', () => {
+    expect(rejectedForWrite([rule({ targets: [{ provider: 'openai', weight: 0 }] })])).toHaveLength(1);
   });
 });
 

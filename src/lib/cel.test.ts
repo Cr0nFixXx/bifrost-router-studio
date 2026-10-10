@@ -304,3 +304,48 @@ describe('compileCondition', () => {
     }
   });
 });
+
+/**
+ * An unknown field used to be guessed as `model` in `celTokenToField`'s `default:`
+ * branch. `virtual_key_id == "x"` therefore compiled to `model == "x"` and reached
+ * the gateway that way — twice, because the query builder parses the CEL a second
+ * time. No test covered it.
+ */
+describe('unmodelled fields', () => {
+  it('warns instead of guessing', () => {
+    const { warnings } = parseExpression('virtual_key_id == "vk_1"');
+    expect(warnings.join(' ')).toContain('Unknown field "virtual_key_id"');
+  });
+
+  it('keeps the field name the user wrote when compiling', () => {
+    const { group } = parseExpression('virtual_key_id == "vk_1"');
+    expect(compileGroup(group)).toBe('virtual_key_id == "vk_1"');
+  });
+
+  it('round-trips an unmodelled field unchanged', () => {
+    const expr = 'team_id == "t_9" || virtual_key_id in ["a","b"]';
+    const once = compileGroup(parseExpression(expr).group);
+    expect(once).toBe('team_id == "t_9" || virtual_key_id in ["a", "b"]');
+    expect(compileGroup(parseExpression(once).group)).toBe(once);
+  });
+
+  it('quotes the value, since nothing says it is a number', () => {
+    const { group } = parseExpression('virtual_key_id == 42');
+    expect(compileGroup(group)).toBe('virtual_key_id == "42"');
+  });
+
+  it('does not claim the condition is evaluable', () => {
+    const out = evaluateCEL('virtual_key_id == "vk_1"', {
+      model: 'gpt-4o', headers: {}, params: {}, time: { hour: 3 },
+    });
+    // The studio has no value for it, so it must not quietly decide true or false.
+    expect(out.matched).toBe(false);
+  });
+
+  it('still maps every modelled field', () => {
+    for (const [field, spec] of Object.entries(CEL_FIELDS)) {
+      const { warnings } = parseExpression(`${spec.cel.replace('["__H__"]', '["x"]')} == "v"`);
+      expect(warnings, field).toEqual([]);
+    }
+  });
+});

@@ -1406,6 +1406,56 @@ schrieb nichts"). Drei weitere Call-Sites vertrauten dem Snapshot trotzdem:
 - Noch **nicht** manuell geprüft: der Export-Fall im Browser (Canvas-Edit → LiteLLM-YAML → neuer
   Name in der Datei). Der Test pinnt die Projektion, nicht den Klickpfad.
 
+## v0.2.9 Build 26101019 — unbekannte CEL-Felder behalten ihren Namen ✅
+
+### Auslöser
+Der zweite Rest aus Runde 2: `celTokenToField`s `default:`-Zweig, in `TODO.md` als
+„riskante Nebenwirkung: schreibt öfter `query: null`" notiert. Der User wählte Variante
+(b): **Original-CEL statt Zuordnung** — der `query`-Vertrag bleibt erhalten, die
+Falschzuordnung verschwindet.
+
+### Der Fehler
+`celTokenToField` (`cel.ts:56`) hatte einen `default:`-Zweig auf `{ field: 'model' }`.
+Ein Feld, das die Studio-Union nicht kennt, wurde also zu `model`. Die Kette:
+
+```
+virtual_key_id == "vk_1"          ← was der User tippt
+  → parseExpression               → { field: 'model', value: 'vk_1' }
+  → compileGroup                  → model == "vk_1"
+  → toWriteShape (bifrostApi:160) → queryForWrite parst den String ein zweites Mal
+                                  → gleiche Falschzuordnung
+```
+
+Das Gateway bekam eine Query, die auf das Modell prüft. `CLAUDE.md` nennt die Regenerierung
+von `query` aus CEL als Vertrag — der Vertrag blieb formal erfüllt und war inhaltlich falsch.
+
+### Der Fix
+`celTokenToField` gibt `null` zurück statt zu raten. Der Parser legt das Token dann auf
+`CELCondition.token` ab und warnt. `emitCondition` und `conditionToBifrostQuery` benutzen
+`token`, wenn es gesetzt ist — der Feldname geht genau so raus, wie er reingekommen ist.
+`field` treibt nur noch den visuellen Editor, und der hat für ein nicht modelliertes Feld
+keinen Knoten.
+
+**Nicht billiger gewesen:** In `celToBifrostQueryObject` stand `if (warnings.length > 0)
+return null`. Die neue Unknown-field-Warnung hätte damit jedes `query` gekillt — das war
+Variante (a), nicht (b). Nach dem Weglassen der Prüfung per Probe gemessen:
+
+```
+!(provider == "a" && team_name == "b")  ==>  {combinator: "and", rules: [a, b]}
+```
+
+**Die Negation war weg.** Aus `!(a && b)` wurde `a && b` — das exakte Gegenteil der Regel,
+freiwillig ans Gateway geschickt. Jetzt gilt: nur eine *Unknown-field*-Warnung ist harmlos
+(der Token reist mit), eine *geflachte Negation* oder *Trailing Tokens* nicht.
+
+### Verifikation
+201 Tests in 19 Dateien (11 neue), gateway-smoke **31/31**. Die drei Fälle, die das
+Verhalten festnageln, stehen in `bifrostQuery.test.ts`: unmodelliertes Feld wird
+durchgereicht, geflachte Negation wird abgelehnt, Trailing Tokens werden abgelehnt.
+
+Ohne Probe wäre (b) ein stiller Datenfehler gewesen — die 190 bestehenden Tests waren
+nach dem ersten Umbau alle grün.
+
 ## v0.2.9 Build 26101019 — der Wizard baut CEL jetzt über `compileGroup` ✅
 
 ### Auslöser

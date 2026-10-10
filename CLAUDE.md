@@ -83,7 +83,15 @@ Operators: `== != > < >= <= in startsWith endsWith contains matches`, combined w
 
 Two things the parser cannot represent, and callers must not assume otherwise:
 - `!(a && b)` is **flattened** with a warning. `negate` only ever applies to a single condition.
-- An unknown field token silently becomes `model` (`celTokenToField`'s `default:`). See `TODO.md`.
+- A field the union does not model (`virtual_key_id`) is **not** guessed: the parser keeps
+  the verbatim token on `CELCondition.token` and warns, and the compiler and the query
+  builder emit it as written. `field` stays `model` and drives only the visual editor.
+
+That second one drives a rule worth stating: a parser warning is not one thing.
+`celToBifrostQueryObject` withholds the payload for a *flattened negation* or *trailing
+tokens* — the tree would mean the opposite of the text — but keeps it for an *unknown
+field*, because the token travels along. Do not collapse that distinction to
+`warnings.length > 0`; it ships a rule inverted.
 
 ## Rule shape
 

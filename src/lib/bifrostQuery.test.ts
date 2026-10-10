@@ -50,3 +50,34 @@ describe('bifrost query builder export', () => {
     }
   });
 });
+
+/**
+ * The gateway's `query` payload is built by parsing the CEL a second time. It used
+ * to inherit the `model` guess, so an unmodelled field arrived as a rule checking
+ * the model — while the canvas showed `virtual_key_id`.
+ */
+describe('unmodelled fields in the query payload', () => {
+  it('sends the field the user wrote', () => {
+    const q = celToBifrostQueryObject('virtual_key_id == "vk_1"')!;
+    expect(q.rules[0]).toMatchObject({ field: 'virtual_key_id', operator: '=', value: 'vk_1' });
+  });
+
+  it('sends no rule at all when the expression cannot be parsed', () => {
+    expect(celToBifrostQueryObject('virtual_key_id == ')).toBeNull();
+  });
+
+  it('still refuses a flattened negation rather than shipping its opposite', () => {
+    // The tree would read "provider == a AND team_name == b" — the negation is gone.
+    // That is worse than sending no query at all.
+    expect(celToBifrostQueryObject('!(provider == "a" && team_name == "b")')).toBeNull();
+  });
+
+  it('still refuses trailing tokens', () => {
+    expect(celToBifrostQueryObject('model == "x" trailing')).toBeNull();
+  });
+
+  it('carries an unmodelled field through a mixed expression', () => {
+    const q = celToBifrostQueryObject('complexity_tier in ["A","B"] && virtual_key_id == "vk"')!;
+    expect(q.rules[1]).toMatchObject({ field: 'virtual_key_id', value: 'vk' });
+  });
+});

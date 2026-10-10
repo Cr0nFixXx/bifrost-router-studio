@@ -17,11 +17,6 @@
       platzieren, nicht skalieren.
 
 ### Priorität mittel
-- [ ] **Unbekannte CEL-Felder beim Parse ablehnen** — `celTokenToField` fällt im `default:`-Zweig still
-      auf `model` zurück. `virtual_key_id == "x"` parst damit zu `model == "x"` ohne jede Warnung.
-      **Nicht blind umsetzen:** ein strenger Parser lässt `celToBifrostQueryObject` öfter `null`
-      liefern, und `ruleShape.queryForWrite` schreibt dann öfter `query: null` in die DB. Erst die
-      Auswirkung auf den Sync messen, dann eigener Commit.
 - [ ] **`query` mit deterministischen ids erzeugen** — `ruleShape.queryForWrite` mintet bei jedem
       Aufruf neue ids (`grp_…`, `r_…`). Deshalb schließt `sync.ts:97` das Feld aus dem
       Write-Fingerprint aus. Mit stabilen ids aus Feld/Op/Wert fiele der Ausschluss weg. **Nicht

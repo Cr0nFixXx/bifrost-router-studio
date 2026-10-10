@@ -208,6 +208,13 @@ export interface CELCondition {
   value: string;
   headerName?: string; // for header/param fields
   negate?: boolean; // renders as !(condition)
+  /**
+   * The verbatim field token when it is none of the `CELField` members the studio
+   * models (e.g. `virtual_key_id`). The gateway may still know it, so it is carried
+   * through to the compiled expression and the query payload instead of being
+   * replaced by a guess. Never read this as a value to evaluate.
+   */
+  token?: string;
 }
 
 export interface CELGroup {

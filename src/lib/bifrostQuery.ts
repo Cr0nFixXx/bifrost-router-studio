@@ -53,7 +53,9 @@ function queryValue(c: CELCondition): string {
 export function conditionToBifrostQuery(c: CELCondition): QueryNode {
   const rule: BifrostQueryRule = {
     id: qid('cond'),
-    field: queryFieldName(c.field),
+    // An unmodelled field keeps its own name in the payload — `queryFieldName` would
+    // answer `model` for it, and the gateway would get a rule that checks the model.
+    field: c.token ?? queryFieldName(c.field),
     operator: OPERATOR_MAP[c.op] ?? c.op,
     value: queryValue(c),
     valueSource: 'value',
@@ -70,12 +72,20 @@ export function groupToBifrostQuery(group: CELGroup): BifrostQueryGroup {
   };
 }
 
-/** Returns a query-builder object, or null if the CEL is unsupported by parser. */
+/**
+ * Returns a query-builder object, or null if the tree would not say what the text says.
+ *
+ * Not every parser warning is fatal. An unmodelled field keeps its own `token`, so the
+ * tree is still faithful and dropping the payload would only lose the gateway's rule
+ * builder. A *flattened negation* or *trailing tokens* is the opposite: the tree means
+ * something else than the text, and shipping it would be worse than shipping nothing.
+ */
 export function celToBifrostQueryObject(celExpression: string): BifrostQueryGroup | null {
   const src = (celExpression ?? '').trim();
   if (!src || src === 'true') return { id: qid('grp'), combinator: 'and', rules: [] };
   const parsed = parseExpression(src);
-  if (parsed.warnings.length > 0) return null;
+  if (parsed.error) return null;
+  if (parsed.warnings.some((w) => !w.startsWith('Unknown field'))) return null;
   return groupToBifrostQuery(parsed.group);
 }
 

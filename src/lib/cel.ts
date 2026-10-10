@@ -90,8 +90,15 @@ export function queryFieldName(field: CELField): string {
   return CEL_FIELDS[field].cel.replace(/\["__H__"\]/, '');
 }
 
-/** Map a CEL field token to our union type (guessing header/param from syntax). */
-function celTokenToField(token: string): { field: CELField; headerName?: string } {
+/**
+ * Map a CEL field token to our union type (guessing header/param from syntax).
+ *
+ * Returns `null` for a token the studio has no `CELField` for — the gateway may well
+ * know it. The parser keeps such a condition's `token` verbatim so the compiler and the
+ * query builder emit the field the user actually wrote. Guessing `model` here used to
+ * rewrite `virtual_key_id == "x"` into `model == "x"` on the way to the gateway.
+ */
+function celTokenToField(token: string): { field: CELField; headerName?: string } | null {
   const base = token.split('[')[0];
   switch (base) {
     case 'headers':
@@ -124,7 +131,7 @@ function celTokenToField(token: string): { field: CELField; headerName?: string 
     case 'request_type':
       return { field: 'request_type' };
     default:
-      return { field: 'model' };
+      return null;
   }
 }
 
@@ -152,6 +159,12 @@ function emitValue(field: CELField, op: CELComparison, value: string): string {
 }
 
 export function emitCondition(c: CELCondition): string {
+  if (c.token) {
+    // A field the studio does not model. Emit it as written; the value stays quoted
+    // because nothing says it is a number.
+    const value = c.op === 'in' ? `[${splitInList(c.value).map((v) => JSON.stringify(v)).join(', ')}]` : JSON.stringify(c.value);
+    return `${c.token} ${c.op} ${value}`;
+  }
   const base = CEL_FIELDS[c.field].cel.replace('__H__', c.headerName ?? 'x-header');
   let expr: string;
   switch (c.op) {
@@ -408,6 +421,12 @@ class Parser {
     }
 
     const lhs = this.parsePostfix();
+    // An unmapped token is kept verbatim in `token`; `field` only drives the visual
+    // editor, and the studio has no node for a variable it does not model.
+    const mapped = celTokenToField(lhs.token);
+    if (!mapped) this.warnings.push(`Unknown field "${lhs.token.split('[')[0]}" — kept as written.`);
+    const { field = 'model', headerName } = mapped ?? {};
+    const token = mapped ? undefined : lhs.token;
 
     // function call on a field, e.g. model.startsWith("gpt-4")
     if (this.peek().type === 'dot') {
@@ -416,14 +435,12 @@ class Parser {
       this.expect('lparen');
       const arg = this.next();
       this.expect('rparen');
-      const { field, headerName } = celTokenToField(lhs.token);
-      return { id: uid('cond'), field, headerName, op: method as CELComparison, value: stripQuotes(arg.value) };
+      return { id: uid('cond'), field, headerName, token, op: method as CELComparison, value: stripQuotes(arg.value) };
     }
 
     const opTok = this.peek();
     if (opTok.type === 'op') {
       this.next();
-      const { field, headerName } = celTokenToField(lhs.token);
       if (opTok.value === 'in') {
         if (this.peek().type !== 'lbracket') throw new Error('Expected "[" after "in"');
         this.next(); // consume '['
@@ -434,10 +451,10 @@ class Parser {
           if (this.peek().type === 'comma') this.next();
         }
         this.expect('rbracket');
-        return { id: uid('cond'), field, headerName, op: 'in', value: items.join(', ') };
+        return { id: uid('cond'), field, headerName, token, op: 'in', value: items.join(', ') };
       }
       const rhs = this.next();
-      return { id: uid('cond'), field, headerName, op: opTok.value as CELComparison, value: stripQuotes(rhs.value) };
+      return { id: uid('cond'), field, headerName, token, op: opTok.value as CELComparison, value: stripQuotes(rhs.value) };
     }
     throw new Error(`Expected operator or method after "${lhs.token}"`);
   }

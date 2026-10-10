@@ -2,6 +2,16 @@
 
 ## 0.2.9 — Build 26101019
 
+- **A condition on a field the studio does not model no longer changes meaning on the
+  way to the gateway.** `celTokenToField` fell back to `model` for any field it did not
+  recognise, so `virtual_key_id == "vk_1"` compiled to `model == "vk_1"` — twice, once for
+  the expression and once for the `query` payload Bifrost's rule builder reads. The field
+  is now carried through as written and the parser says so. Flattened negations and
+  trailing tokens still withhold the payload rather than send a rule that means the
+  opposite of the text.
+
+## 0.2.9 — Build 26101019
+
 - **The rule wizard no longer builds CEL the gateway cannot read.** It assembled its
   expressions by string interpolation instead of going through the same compiler the
   editor uses, which emitted `budget_used == "42"` (the gateway wants a number),

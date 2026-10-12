@@ -1,0 +1,11 @@
+# The VSIX ships only the bundle in out/ (which includes sql-wasm.wasm,
+# copied there by esbuild) plus the manifest. Everything else is build input.
+src/**
+node_modules/**
+esbuild.mjs
+tsconfig.json
+.gitignore
+.vscode/**
+**/*.ts
+**/*.map
+!out/**

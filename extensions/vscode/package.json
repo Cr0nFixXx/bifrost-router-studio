@@ -1,0 +1,84 @@
+{
+  "name": "bifrost-router-studio-vscode",
+  "displayName": "Bifrost Router Studio",
+  "description": "Bifrost routing rules in the editor: rule tree and CEL language support.",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": ["Programming Languages", "Visualization"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "bifrostRules",
+          "name": "Bifrost Rules"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "bifrost.openDatabase",
+        "title": "Bifrost: Regel-Datenbank öffnen",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "bifrost.refreshRules",
+        "title": "Bifrost: Regeln neu laden",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "bifrost.copyCel",
+        "title": "CEL-Ausdruck kopieren"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "bifrost.openDatabase",
+          "when": "view == bifrostRules",
+          "group": "navigation@1"
+        },
+        {
+          "command": "bifrost.refreshRules",
+          "when": "view == bifrostRules",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "bifrost.copyCel",
+          "when": "view == bifrostRules && viewItem == bifrostRule",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Bifrost Router Studio",
+      "properties": {
+        "bifrost.databasePath": {
+          "type": "string",
+          "default": "",
+          "description": "Pfad zur Regel-Datenbank, relativ zum Workspace. Leer = beim Öffnen fragen."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@types/vscode": "^1.91.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.2"
+  }
+}

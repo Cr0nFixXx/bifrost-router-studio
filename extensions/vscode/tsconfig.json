@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // DOM is here only because `vite/client` references Worker/HTMLStyleElement.
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // `vite/client` supplies `declare module '*?url'`, which src/lib/sqljs/loader.ts
+    // relies on. Without it this typecheck fails on a file the app ships fine.
+    "types": ["node", "vscode", "vite/client"],
+    "strict": true,
+    // No noUnusedLocals/noUnusedParameters: tsc follows imports into ../../src,
+    // so those flags would report the app's code against rules the root does not
+    // set. The root tsconfig governs src/; this one only adds the extension.
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    // No rootDir: sources live in two trees (here and ../../src) and any
+    // rootDir would trip TS6059. Emit comes from esbuild, so tsc needs none.
+    "noEmit": true,
+    // No baseUrl (deprecated); `paths` resolves relative to this file.
+    "paths": {
+      "@/*": ["../../src/*"]
+    }
+  },
+  "include": ["src"]
+}

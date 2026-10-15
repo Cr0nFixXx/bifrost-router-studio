@@ -269,18 +269,27 @@ export function rulesToWorkflow(
     let routeSourceId = triggerId;
     let routeSourceHandle = 'out';
     if (expr && expr !== 'true') {
-      const parsed = parseExpression(expr).group;
-      const rootId = addLogicTree(parsed, startX + 780, ty, 0);
-      edges.push({
-        id: `${triggerId}-${rootId}`,
-        source: triggerId,
-        sourceHandle: 'out',
-        target: rootId,
-        targetHandle: 'in',
-        type: 'flow',
-        data: { label: 'conditions' },
-      });
-      routeSourceId = rootId;
+      const result = parseExpression(expr);
+      // A parse error hands back a placeholder `newGroup()` — a blank
+      // `model == ""` condition. Rendering that would put an *editable* fake
+      // node on the canvas; editing it takes `expressionForTrigger`'s
+      // `roots.length > 0` branch and compiles the placeholder, replacing the
+      // real condition. No tree, the raw expression survives untouched.
+      const rootId = result.error
+        ? null
+        : addLogicTree(result.group, startX + 780, ty, 0);
+      if (rootId) {
+        edges.push({
+          id: `${triggerId}-${rootId}`,
+          source: triggerId,
+          sourceHandle: 'out',
+          target: rootId,
+          targetHandle: 'in',
+          type: 'flow',
+          data: { label: 'conditions' },
+        });
+        routeSourceId = rootId;
+      }
     }
 
     const targetId = localId('target');

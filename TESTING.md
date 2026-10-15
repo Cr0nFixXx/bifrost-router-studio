@@ -14,7 +14,7 @@ npm run build      # tsc --noEmit + vite build
 
 ## Test-Landkarte
 
-217 Tests in 20 Dateien.
+246 Tests in 21 Dateien.
 
 | Testdatei | Tests | Deckt ab |
 | --- | --- | --- |
@@ -23,21 +23,22 @@ npm run build      # tsc --noEmit + vite build
 | `syncNow.test.ts` | 7 | `useStore` gegen ein Fake-Gateway: Push, No-op, Priority-Tausch, Teilfehler |
 | `rules.test.ts` | 2 | eine Projektion: Reorder und Canvas-Edit sind sofort in `getCanvasRules()` sichtbar |
 | `connectionSource.test.ts` | 9 | `useStore` Modus-Entscheidung: keine Datei-Session mit `connectionSource: 'api'`, Handle wird ersetzt statt gestapelt, `openSqlBrowser` verweigert ohne Datei |
-| `bifrostApi.test.ts` | 5 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination, `/api/providers`-Shape |
-| `cel.test.ts` | 49 | Parser/Compiler, Visual↔CEL Round-Trip, Feldtabelle, AST-Evaluator, `compileCondition`, nicht modellierte Felder |
+| `bifrostApi.test.ts` | 8 | Katalog-Reads gegen ein Gateway: `/api/models`-Pagination inkl. `include_deprecated`, `/api/providers`-Shape, 403-Klassifikation je Transport |
+| `cel.test.ts` | 55 | Parser/Compiler, Visual↔CEL Round-Trip, Feldtabelle, AST-Evaluator, `compileCondition`, nicht modellierte Felder, Lexer-Escapes/Triple-Quotes/unterminierter String |
 | `simulation.test.ts` | 7 | `runSimulation` gegen einen echten Canvas: `in`, `time.hour`, `request_size`, `params`, Header-Case |
-| `bifrostMapper.test.ts` | 9 | Graph ⇄ Rules, `rulesToWorkflow` Hydration |
+| `bifrostMapper.test.ts` | 10 | Graph ⇄ Rules, `rulesToWorkflow` Hydration, unparsbares CEL ohne Bedingungsbaum |
 | `validation.test.ts` | 12 | Diagnostics (Gewichte inkl. ≤ 0, Zyklen, CEL, Scopes) |
 | `gatewayExport.test.ts` | 8 | LiteLLM-YAML, OpenAI-Model-Groups |
 | `diff.test.ts` | 6 | Canvas-vs-DB-Diff |
 | `modelRefs.test.ts` | 17 | `provider/model`-Helfer, Fallback-Parts, Provider-Parsing aus der Model-Id |
 | `ruleOrder.test.ts` | 5 | Priority-Reorder innerhalb einer Scope-Gruppe |
 | `aiDraft.test.ts` | 4 | AI-Draft-Normalisierung und -Validierung |
-| `bifrostQuery.test.ts` | 8 | CEL → react-querybuilder JSON, `queryFieldName`-Äquivalenz |
+| `bifrostQuery.test.ts` | 9 | CEL → react-querybuilder JSON, `queryFieldName`-Äquivalenz |
 | `customTemplates.test.ts` | 3 | Template-Packs |
 | `io.test.ts` | 2 | Import/Export der Workspace-Formate |
 | `theme.test.ts` | 2 | Theme-Tokens |
 | `db/bifrostDb.test.ts` | 11 | SQL.js-DB (`BifrostDb.ts`): Schema, Rule-CRUD, Priorities, exportBytes, config.json, Query-Wiederverwendung |
+| `extensions/vscode/src/ruleLabels.test.ts` | 18 | VSCode-Extension Phase 1: Regel-Beschriftungen aus dem Gateway-Rohtyp |
 
 Die Tabelle oben summiert genau die Kopfzeile — wenn du eine Testdatei hinzufügst, gehört sie
 hier mit, sonst driftet die Summe.
@@ -47,7 +48,7 @@ hier mit, sonst driftet die Summe.
 Eine Änderung ist fertig, wenn:
 
 1. `npm run typecheck` clean ist (keine `any` in `src/types/*`).
-2. `npm test` grün ist — **201 Tests, 19 Dateien**, keine Auslassungen.
+2. `npm test` grün ist — **246 Tests, 21 Dateien**, keine Auslassungen.
 3. `npm run build` durchläuft.
 4. Für Code, der Routing-Regeln berührt: der Visual↔CEL-Round-Trip hält, und Gewichte summieren
    weiter auf `1`.

@@ -77,12 +77,17 @@ Pfade sind deprecated, aber noch vorhanden; entfernt werden sie erst im nächste
 
 ## CORS und Erreichbarkeit
 
-`client.allowed_origins` defaultet auf `["*"]`, es gibt kein TLS. Gegen ein lokales Bifrost
-funktioniert der Direktmodus aus dem Browser also ohne jede Einrichtung.
+Seit **2.3.0** weist eine Instanz mit abgeschalteter Dashboard-Auth Browser-Requests von
+Origins, die nicht in `client.allowed_origins` stehen, mit **403** ab — ein blankes `*` zählt
+nicht mehr. Der Direktmodus aus dem Browser braucht also die Origin des Studios in dieser
+Liste (z. B. `http://localhost:5173`); ein Gateway vor 2.3.0 genügte die alte Default-Liste
+`["*"]`. Der Bridge-Modus ist nicht betroffen: die Bridge holt serverseitig, ohne `Origin`.
 
-Das ist **nicht** der empfohlene Betrieb: Bifrosts eigene Security-Doku rät ausdrücklich davon ab,
-die Instanz ungeschützt zu exponieren. Für alles außer lokalen Testinstanzen gehört der Token in
-die Bridge, nicht in den Browser.
+→ Bei einem 403 im Direktmodus zuerst `client.allowed_origins` prüfen, nicht den Token.
+
+Das ist ohnehin **nicht** der empfohlene Betrieb: Bifrosts eigene Security-Doku rät ausdrücklich
+davon ab, die Instanz ungeschützt zu exponieren. Für alles außer lokalen Testinstanzen gehört
+der Token in die Bridge, nicht in den Browser.
 
 ## Rechte
 

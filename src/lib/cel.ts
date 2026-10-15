@@ -322,14 +322,68 @@ class Lexer {
     return toks;
   }
 
+  /**
+   * Read `"…"` / `'…'`, unescaping what `JSON.stringify` produces.
+   *
+   * `emitValue` emits through `JSON.stringify`, so a value holding a quote comes
+   * back out as `\"` — reading only up to the first matching quote made the lexer
+   * return `gpt\` for `model == "gpt\"4"`. That is the studio failing to read its
+   * own output. The escape set below is exactly what `JSON.stringify` emits.
+   *
+   * Throws on an unterminated string: the old loop ran to the end of the source
+   * and returned a truncated value, which is the quietest failure in this file —
+   * one quote too few is not an error, it is a wrong answer.
+   */
   private readString(quote: string): string {
+    if (this.src[this.pos + 1] === quote && this.src[this.pos + 2] === quote) {
+      return this.readTripleString(quote);
+    }
     this.pos++;
     let out = '';
-    while (this.pos < this.src.length && this.src[this.pos] !== quote) {
-      out += this.src[this.pos++];
+    while (this.pos < this.src.length) {
+      const ch = this.src[this.pos];
+      if (ch === quote) {
+        this.pos++;
+        return out;
+      }
+      if (ch === '\\') {
+        out += this.readEscape();
+        continue;
+      }
+      out += ch;
+      this.pos++;
     }
-    this.pos++; // closing quote
+    throw new Error(`Unterminated string (missing closing ${quote})`);
+  }
+
+  /** `"""…"""` / `'''…'''` — may span whitespace and newlines. */
+  private readTripleString(quote: string): string {
+    const close = quote.repeat(3);
+    this.pos += 3;
+    const end = this.src.indexOf(close, this.pos);
+    if (end === -1) throw new Error(`Unterminated string (missing closing ${close})`);
+    const out = this.src.slice(this.pos, end);
+    this.pos = end + 3;
     return out;
+  }
+
+  private readEscape(): string {
+    this.pos++; // the backslash itself
+    const ch = this.src[this.pos];
+    if (ch === undefined) throw new Error('Unterminated string (trailing backslash)');
+    this.pos++;
+    switch (ch) {
+      case 'n': return '\n';
+      case 't': return '\t';
+      case 'r': return '\r';
+      case 'b': return '\b';
+      case 'f': return '\f';
+      case '/': return '/';
+      case '\\': return '\\';
+      case '"': return '"';
+      case "'": return "'";
+      default: return ch;
+    }
   }
   private readNumber(): string {
     let out = '';

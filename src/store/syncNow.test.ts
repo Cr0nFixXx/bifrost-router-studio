@@ -52,7 +52,7 @@ describe('syncNow', () => {
         // UNIQUE (scope, priority) — the constraint the studio only learned
         // from a 500 on the first priority swap.
         const taken = stored.find((r) => r.id !== id && r.scope === current.scope && r.priority === body.priority);
-        if (taken) return fail(500, `Failed to update routing rule in database: routing rule with priority ${body.priority} already exists for scope '${current.scope}'`);
+        if (taken) return fail(409, `Failed to update routing rule in database: routing rule with priority ${body.priority} already exists for scope '${current.scope}'`);
         stored = stored.map((r) => (r.id === id ? { ...r, ...body } : r));
         return new Response(JSON.stringify({ rule: body }), { status: 200 });
       }

@@ -17,6 +17,19 @@
       platzieren, nicht skalieren.
 
 ### Priorität mittel
+- [ ] **`ttft_timeout_ms` am Routing-Target editierbar machen** — Bifrost 2.3.0 schreibt es an
+      die *Targets* (1–300000 ms, Timeout-Code `ttft_timeout`/504), unser Typ trägt es an der
+      *Rule* und schreibt es nie. **Blockiert an einer Verifikation, die noch fehlt:**
+      `GET /api/routing/rules` gegen eine echte 2.3.0-Instanz — Rule oder `targets[i]`? — und ein
+      PUT mit gesetztem Feld, das zurückgelesen wieder dasteht. Bleibt es nicht stehen, ist das
+      Feld an der Rule und die ganze Runde entfällt. Wenn ja: Feld nach `ApiTarget` verschieben,
+      `RoutingTarget.ttft_timeout_ms?: number`, Aufnahme in `apiRuleToRouting`, `toWriteShape`
+      (`bifrostApi.ts`) **und** `writeFingerprint` (`sync.ts`) — beide enumerieren explizit, ein
+      fehlender Fingerprint schreibt nie, ein überzähliger schreibt bei jedem Sync. Bereichsprüfung
+      nur in `sync.ts rejectionReason`, nicht im Inspector und nicht in `validation.ts`.
+      **Harte Grenze:** im nativen Bifrost-SQLite-Schema liegt das Target in `routing_targets`,
+      ohne diese Spalte; die DB gehört dem Gateway. Studio-eigenes Schema und API-Modus
+      funktionieren, das native Dateiformat nicht — dort sichtbar, aber gesperrt, mit Hinweis.
 - [ ] **`toWriteShape` und `createNativeRule` schließen** — dieselbe Regel wird an zwei Orten
       unabhängig gedreht, mit abweichenden Antworten: `bifrostApi.ts` schreibt `weight: t.weight`
       roh durch, `bifrostDb.ts` schreibt `Number(t.weight ?? 1)`; `description` fehlt im

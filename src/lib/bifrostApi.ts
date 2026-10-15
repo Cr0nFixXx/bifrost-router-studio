@@ -56,6 +56,14 @@ export interface ApiTransport {
   /** Bearer token to attach, or null when a proxy injects it for us. */
   token: string | null;
   /**
+   * Direct = the browser talks to Bifrost itself and sends an `Origin` header.
+   * Since 2.3.0 a gateway with dashboard auth off answers 403 to any origin not
+   * listed in `client.allowed_origins` (a blank `*` does not count). The bridge
+   * fetches server-side, has no `Origin`, and is unaffected — which is exactly
+   * what a 403 message has to say, so it needs to know which mode it is in.
+   */
+  kind: 'direct' | 'bridge';
+  /**
    * Version prefixes tried in order until one answers, each with the rules
    * path that goes with it. Bifrost <2.0.0 serves the same operations at
    * `/api/governance/routing-rules`, NOT `/api/governance/rules` — the suffix
@@ -83,6 +91,7 @@ export function directTransport(baseUrl: string, token: string | null): ApiTrans
     url: (path) => `${base}${path}`,
     token,
     prefixes: PREFIXES,
+    kind: 'direct',
   };
 }
 
@@ -99,6 +108,7 @@ export function bridgeTransport(bridgeUrl: string, token: string | null = null):
     url: (path) => `${base}/api/bifrost${path}`,
     token,
     prefixes: PREFIXES,
+    kind: 'bridge',
   };
 }
 
@@ -108,7 +118,19 @@ function authHeaders(token: string | null): HeadersInit {
   return token ? { authorization: `Bearer ${token}`, 'content-type': 'application/json' } : { 'content-type': 'application/json' };
 }
 
-async function readError(res: Response): Promise<BifrostApiError> {
+/**
+ * Bifrost 2.3.0 answers 403 to a browser whose `Origin` is not listed in
+ * `client.allowed_origins` (a blank `*` no longer counts) whenever dashboard
+ * auth is off. A bare "403 Forbidden" gives the user nothing to act on, so the
+ * direct mode names the cause and the way out. The bridge mode is left alone:
+ * it fetches server-side, sends no `Origin`, and cannot be the cause.
+ */
+const DIRECT_403 =
+  'Direktmodus: Der Gateway lehnt die Browser-Origin ab (403). ' +
+  'Seit Bifrost 2.3.0 muss die Origin des Studios in `client.allowed_origins` ' +
+  'stehen — ein blankes `*` zählt nicht. Über die lokale Bridge ist das nicht betroffen.';
+
+async function readError(res: Response, kind: ApiTransport['kind']): Promise<BifrostApiError> {
   let body: unknown;
   let message = `${res.status} ${res.statusText}`.trim();
   try {
@@ -118,6 +140,9 @@ async function readError(res: Response): Promise<BifrostApiError> {
     else if (typeof (body as Json)?.message === 'string') message = (body as Json).message as string;
   } catch {
     /* non-JSON error body — the status line is all we have */
+  }
+  if (res.status === 403 && kind === 'direct') {
+    message = message.includes('Forbidden') || !message ? DIRECT_403 : `${message} — ${DIRECT_403}`;
   }
   return new BifrostApiError(message, res.status, body);
 }
@@ -218,7 +243,7 @@ export class BifrostApi {
     } catch (err) {
       throw new BifrostApiError((err as Error).message || 'Bifrost ist nicht erreichbar', 0);
     }
-    if (!res.ok) throw await readError(res);
+    if (!res.ok) throw await readError(res, this.transport.kind);
     return (await res.json()) as T;
   }
 
@@ -243,10 +268,10 @@ export class BifrostApi {
       // fork); on an item path it means the rule is gone. Only the former is
       // worth retrying against the other prefix.
       if (res.status === 404 && path === '/rules' && !this.prefix) {
-        last.push(await readError(res));
+        last.push(await readError(res, this.transport.kind));
         continue;
       }
-      if (!res.ok) throw await readError(res);
+      if (!res.ok) throw await readError(res, this.transport.kind);
       this.prefix = candidate;
       if (res.status === 204) return undefined as T;
       return (await res.json()) as T;
@@ -292,7 +317,12 @@ export class BifrostApi {
     let total = Number.POSITIVE_INFINITY;
     while (offset < total) {
       const page = await this.plainRequest<{ models?: ApiModel[]; total?: number }>(
-        `/api/models?limit=${pageSize}&offset=${offset}`,
+        // `include_deprecated=true` is deliberate: since 2.3.0 `/api/models` hides
+        // deprecated models by default, and the gateway still *routes* to them.
+        // Without it the dropdown loses entries and `providerWarnings` (which
+        // checks against this catalog) flags a perfectly valid rule as "not in
+        // the model catalog" — a false alarm the user cannot tell from a real one.
+        `/api/models?limit=${pageSize}&offset=${offset}&include_deprecated=true`,
       );
       const rows = page.models ?? [];
       out.push(...mapGatewayModels(rows));
@@ -369,6 +399,6 @@ export async function fetchBridgeHealth(bridgeUrl: string, token: string | null 
   // probes the gateway with it, and that probe is what turns the status line into
   // "Token gültig" instead of a permanent "Token abgelehnt".
   const res = await fetch(`${bridgeUrl.replace(/\/$/, '')}/api/health`, { headers: authHeaders(token) });
-  if (!res.ok) throw await readError(res);
+  if (!res.ok) throw await readError(res, 'bridge');
   return (await res.json()) as BridgeHealth;
 }

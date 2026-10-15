@@ -66,7 +66,9 @@ const weightSumOk = (targets) => Math.abs((targets ?? []).reduce((a, t) => a + N
  * The real gateway has UNIQUE (scope, priority): two rules cannot hold the same
  * priority within a scope. The studio side only learned this from a 500 on the
  * first priority swap — without this simulation every reordering looks healthy
- * and the bug stays invisible.
+ * and the bug stays invisible. Bifrost answers 409 since 2.3.0; older gateways
+ * answer 500. The status makes no difference to the studio (sync.ts catches
+ * every failure generically), so the mock follows the current changelog.
  */
 const priorityTaken = (scope, priority, exceptId) =>
   [...rules.values()].some(
@@ -101,7 +103,7 @@ async function handleCollection(req, res) {
       return send(res, 400, { error: { message: 'target weights must sum to 1' } });
     }
     if (priorityTaken(body.scope, body.priority)) {
-      return send(res, 500, priorityConflict(body.scope, body.priority));
+      return send(res, 409, priorityConflict(body.scope, body.priority));
     }
     seq += 1;
     const rule = { ...body, id: `srv-${seq}` };
@@ -129,7 +131,7 @@ async function handleItem(req, res, id) {
     // Only when the body actually carries a priority — the constraint must not
     // fire on updates that leave the priority alone.
     if (body.priority != null && priorityTaken(current.scope, body.priority, id)) {
-      return send(res, 500, priorityConflict(current.scope, body.priority));
+      return send(res, 409, priorityConflict(current.scope, body.priority));
     }
     // Replaces, not merges. That is the documented behaviour being tested.
     const next = { ...current, ...body };
@@ -163,6 +165,11 @@ const MODELS = [
   { name: 'meta/llama3-8b', provider: 'nvidianim', owned_by: 'meta' },
   { name: 'ocgo-o', provider: 'ocgoo' },
   { name: 'ocgo-r', provider: 'ocgoo' },
+  // Deprecated since 2.3.0: `/api/models` hides these unless
+  // `include_deprecated=true`, but the gateway still routes to them — so a
+  // client that leaves the flag off loses configured models and starts
+  // reporting valid rules as "not in the model catalog".
+  { name: 'gpt-3.5-turbo', provider: 'ocgoo', deprecated: true },
 ];
 
 const KEYS = {
@@ -196,7 +203,10 @@ const server = http.createServer(async (req, res) => {
     const offset = Number(query.get('offset') ?? 0);
     // Real default is 5 — a client that stops after one page sees a truncated catalog.
     const limit = Number(query.get('limit') ?? 5);
-    return send(res, 200, { models: MODELS.slice(offset, offset + limit), total: MODELS.length });
+    // 2.3.0 hides deprecated rows unless asked for them; the flag is off by default.
+    const includeDeprecated = query.get('include_deprecated') === 'true';
+    const rows = includeDeprecated ? MODELS : MODELS.filter((m) => !m.deprecated);
+    return send(res, 200, { models: rows.slice(offset, offset + limit), total: rows.length });
   }
 
   const COLLECTIONS = ['/api/routing/rules', '/api/governance/routing-rules'];

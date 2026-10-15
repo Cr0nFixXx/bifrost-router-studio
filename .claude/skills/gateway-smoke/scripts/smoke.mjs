@@ -306,7 +306,15 @@ check('Bridge-Whitelist lehnt /api/config mit 403 ab', () => {
 // five-row default page that silently truncates the catalog.
 const catalogModels = await api.listModels();
 check('listModels liest den kompletten Katalog über alle Seiten', () => {
-  eq(catalogModels.length, 6, 'Anzahl der Modelle');
+  // Seven, not six: the seventh is the mock's deprecated row. Since 2.3.0
+  // `/api/models` hides deprecated models unless `include_deprecated=true`, and
+  // the gateway still routes to them — the studio asks for them, so the catalog
+  // keeps them and `providerWarnings` stops crying wolf.
+  eq(catalogModels.length, 7, 'Anzahl der Modelle');
+  assert(
+    catalogModels.some((m) => m.model === 'gpt-3.5-turbo'),
+    'deprecated Modell fehlt im Katalog',
+  );
 });
 
 check('listModels hält jedes Modell bei seinem Provider', () => {

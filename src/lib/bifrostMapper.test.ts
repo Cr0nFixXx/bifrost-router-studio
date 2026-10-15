@@ -52,6 +52,12 @@ describe('bifrostMapper', () => {
     expect(b).toEqual(a);
   });
 
+  it('builds no condition tree for an unparsable cel_expression and keeps the text', () => {
+    const { nodes, edges } = rulesToWorkflow([rule({ cel_expression: 'model == "unterminated' })]);
+    expect(nodes.filter((n) => n.type === 'condition' || n.type === 'logic')).toHaveLength(0);
+    expect(workflowToRules(nodes, edges)[0].cel_expression).toBe('model == "unterminated');
+  });
+
   it('resolves targets reached through an intermediate complexity node (BFS)', () => {
     const nodes = [
       { id: 't', type: 'trigger', position: { x: 0, y: 0 }, data: { kind: 'trigger', label: 'T', triggerKind: 'model' as const, celGroup: { id: 'g', combinator: '&&' as const, conditions: [] }, celExpression: 'model == "gpt-4o"', enabled: true, priority: 0, scope: 'global' as const, scopeId: null, chainRule: false } },

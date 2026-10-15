@@ -1698,3 +1698,90 @@ Aussage über eine Datei, die so nicht entsteht.
   ist „`ruleShape.ts` weiterziehen", nicht „drei Fehler".
 - **`TopBar:129` `getDb()` für `keyNameById`** — der config.json-Export verliert im
   API-Modus still die Key-Pins. Braucht eine Entscheidung, keine Fehlerbehandlung.
+
+---
+
+## v0.2.9 Build 26101515 — Bifrost 2.3.0: Runde A, B, C1, C2 ✅
+
+**Kontext:** Gateway-Changelog v2.3.0 gegen den Code geprüft. Nichts bricht den
+Prefix-Mechanismus oder das Rule-Schema, aber vier Stellen werden schlechter — zwei davon still.
+Ursprung: Plan `bifrost-hat-eine-neues-glimmering-wombat.md`.
+
+### Runde A — Prioritäts-Kollision ist jetzt 409
+- [x] `mock-bifrost.mjs`: beide `priorityTaken`-Treffer 500 → **409**, Kommentar um
+      „vor 2.3.0: 500" ergänzt. `syncNow.test.ts` ebenso.
+- [x] `CLAUDE.md`, `gateway-smoke/SKILL.md` nachgezogen. `api-constraints.md` nannte
+      keinen Status.
+- **Produktivcode unangetastet** — verifiziert: `applyDiff` fängt jeden Fehler generisch,
+      `planPriorityPhases` umgeht die Kollision präventiv, nirgends in `src/` eine
+      409-Verzweigung. Ein zweiter Mock-Zustand für einen Status, den der Code nicht
+      unterscheidet, wäre Rauschen.
+
+### Runde B — Der Lexer las nicht, was der Compiler ausgab
+Heute schon aktiver Bug, nicht nur 2.3.0-Vorbereitung.
+- [x] `Lexer.readString` **escapet jetzt** (`\" \' \\ \n \t \r \b \f \/`) — genau die Menge,
+      die `JSON.stringify` erzeugt, weil `emitValue` darüber ausgibt. Vorher lieferte
+      `model == "gpt\"4"` den Wert `gpt\`.
+- [x] **Triple-Quotes** `"""…"""` / `'''…'''` als eigener Lesefall, darf Newlines enthalten.
+      Leerer String `""` bleibt ein Leerstring (Vorabprüfung auf drei Zeichen).
+- [x] **Unterminierter String wirft.** Die alte Schleife lief bis zum Quellenende und
+      lieferte einen verstümmelten Wert — ein `"` zu wenig war kein Fehler, sondern eine
+      falsche Antwort.
+- [x] `bifrostMapper.rulesToWorkflow` prüft `parseExpression(...).error`. Ohne den Check
+      rendert der Parser-Platzhalter (`newGroup()`, eine leere `model == ""`-Bedingung)
+      einen **editierbaren** Fake-Knoten; bearbeitet kompiliert `expressionForTrigger` den
+      Platzhalter und ersetzt die echte Bedingung. Jetzt: kein Baum, das rohe
+      `celExpression` überlebt, `expressionForTrigger` gibt `raw` zurück.
+- **Tests** (`cel.test.ts`, +7): Escape-Quote, Backslash-Reihenfolge, Round-Trip mit Quotes
+      und Backslash, Triple-Quote mit Newline, Leerstring, unterminiert (einfach und
+      dreifach). Dazu `bifrostMapper.test.ts`: unparsbares `cel_expression` baut keine
+      Condition-Nodes, `workflowToRules` gibt den Text unverändert zurück.
+      Der Mapper-Test wurde gegen einen parsbaren Ausdruck gegengeprüft — der Filter auf
+      `condition`/`logic` ist nicht leer, sonst wäre die Assertion wertlos.
+
+### Runde C1 — `/api/models` blendet deprecated Modelle aus
+- [x] `listModels` sendet `include_deprecated=true` mit. Ohne das Flag schrumpft der
+      Katalog ab 2.3.0 **stillschweigend**, und `providerWarnings` — der Hinweis, der gegen
+      den Katalog prüft — markiert eine Regel auf ein deprecated, aber konfiguriertes Modell
+      als „steht nicht im Katalog". Ein falscher Alarm, den der Nutzer nicht von einem echten
+      unterscheiden kann.
+- [x] `bifrostApi.test.ts`: zwei Erwartungs-URLs plus ein Fall, in dem der Mock ohne das Flag
+      eine leere Liste liefert und mit dem Flag das deprecated Modell.
+- [x] Mock bekommt eine deprecated-Reihe (`gpt-3.5-turbo`, provider `ocgoo`) und blendet sie
+      ohne das Flag aus. Der Smoke-Check zählt jetzt 7 statt 6 und prüft das Modell namentlich.
+
+### Runde C2 — Unbekannte Browser-Origin gibt jetzt 403
+- [x] `ApiTransport` bekommt `kind: 'direct' | 'bridge'` (zwei Fabriken, je eine Zeile).
+      `readError(res, kind)` hängt bei **403 im Direktmodus** einen Text an, der
+      `client.allowed_origins` nennt und sagt, dass die Bridge nicht betroffen ist. Der
+      Bridge-Modus bleibt unverändert — er kann die Ursache nicht sein.
+- [x] `fetchBridgeHealth` ruft `readError(res, 'bridge')` — kein `this` in einer
+      freien Funktion.
+- **Doku-Korrektur, die dazugehört:** `api-constraints.md` behauptete, `allowed_origins`
+      defaultet auf `["*"]` und der Direktmodus funktioniere „ohne jede Einstellung". Seit
+ 2.3.0 ist das eine **Falschaussage**: ein blankes `*` zählt nicht, und bei abgeschalteter
+      Dashboard-Auth wird eine unbekannte Origin mit 403 abgewiesen. Neu: Was zu tun ist,
+      wenn der 403 im Direktmodus kommt (erst `allowed_origins`, nicht den Token).
+
+### Runde D — nicht ausgeführt: Verifikation fehlt
+Der Plan stellt die Verifikation **vor** den ersten Edit: `GET /api/routing/rules` gegen eine
+echte 2.3.0-Instanz (liegt `ttft_timeout_ms` am Rule-Objekt oder an `targets[i]`?) und ein PUT
+mit gesetztem Feld, das zurückgelesen wieder dasteht. Ohne echtes Gateway nicht durchführbar —
+das ist laut Plan ein valides Ergebnis, kein Fehlschlag. Der vollständige Weg inklusive der
+harten Grenze (natives SQLite-Schema hat die Spalte nicht) steht in [`TODO.md`](./TODO.md).
+`CLAUDE.md` und `api-constraints.md` tragen den Vorbehalt jetzt mit.
+
+### Validierung
+- `npx tsc --noEmit` clean.
+- Vitest: **246 Tests**, grün (vorher 235).
+- `gateway-smoke`: **31/31** — der Prioritäts-Swap-Check sieht jetzt den 409er des Mocks.
+- Build-Nummer auf `26101515` (Europe/Berlin) in `src/lib/version.ts` **und** `package.json`.
+
+### Abgelehnt
+- **409/500 als zwei Mock-Zustände.** Der Produktivcode unterscheidet die Status nicht; ein
+  Zustandsschalter wäre eine Testgenauigkeit ohne Aussage.
+- **`decisions=true`, UI-Filter für deprecated.** YAGNI.
+- **Neues Feld in `CELCondition`, Änderung an `CEL_FIELDS`.** Der Lexer gehört ganz allein
+  `cel.ts`.
+- **Zweite 403-Verzweigung in `ConnectScreen`.** `isAuth` klassifiziert schon; die Erkenntnis
+  gehört in die Fehlermeldung, nicht in eine neue UI-Kluft.

@@ -59,7 +59,7 @@ Dauert etwa 15 Sekunden. Braucht Ports 8080 (Mock) und 8787 (Bridge) frei; beleg
 | 16 | Bridge aus → status 0 | Netzwerkfehler ist nicht 401 |
 | 17 | WriteShape ohne `id`/`created_at`/`updated_at` | Round-Trip eines GET-Objekts würde scheitern |
 | 18 | Whitelist lehnt `/api/config` mit 403 ab | sonst hätte der Token mehr Reichweite als gedacht |
-| 19 | Prioritäts-Tausch übersteht UNIQUE (scope, priority) | ein Swap 0↔1 ist sequentiell nicht auflösbar; ohne Ausweichen gibt der Mock exakt den 500er, den das echte Gateway liefert |
+| 19 | Prioritäts-Tausch übersteht UNIQUE (scope, priority) | ein Swap 0↔1 ist sequentiell nicht auflösbar; ohne Ausweichen gibt der Mock exakt den 409er, den das echte Gateway seit 2.3.0 liefert (vorher 500) |
 
 ## Wann laufen
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BifrostApi, BifrostApiError, directTransport } from './bifrostApi';
+import { BifrostApi, BifrostApiError, bridgeTransport, directTransport } from './bifrostApi';
 
 const TOKEN = 'secret';
 
@@ -39,9 +39,9 @@ describe('BifrostApi catalog reads', () => {
     expect(models[0]).toEqual({ id: 'ocgoo/m-0', provider: 'ocgoo', model: 'm-0', label: 'm-0' });
     expect(models.map((m) => m.id)).toEqual(all.map((m) => `ocgoo/${m.name}`));
     expect(calls).toEqual([
-      'https://gw.test/api/models?limit=500&offset=0',
-      'https://gw.test/api/models?limit=500&offset=3',
-      'https://gw.test/api/models?limit=500&offset=6',
+      'https://gw.test/api/models?limit=500&offset=0&include_deprecated=true',
+      'https://gw.test/api/models?limit=500&offset=3&include_deprecated=true',
+      'https://gw.test/api/models?limit=500&offset=6&include_deprecated=true',
     ]);
   });
 
@@ -57,7 +57,24 @@ describe('BifrostApi catalog reads', () => {
     const calls = stubFetch({ '/api/models': () => ({ models: [], total: 0 }) });
     await new BifrostApi(directTransport('https://gw.test', TOKEN)).listModels();
     // `/api/routing/api/models` would be the rewrite `request()` performs — and does not exist.
-    expect(calls[0]).toBe('https://gw.test/api/models?limit=500&offset=0');
+    expect(calls[0]).toBe('https://gw.test/api/models?limit=500&offset=0&include_deprecated=true');
+  });
+
+  it('asks for deprecated models — 2.3.0 hides them by default and the gateway still routes to them', async () => {
+    // A gateway that answers without `include_deprecated=true` omits the row —
+    // the catalog would shrink silently and `providerWarnings` would flag a
+    // working rule as "not in the model catalog".
+    const calls = stubFetch({
+      '/api/models': (path) =>
+        new URL('https://x' + path).searchParams.get('include_deprecated') === 'true'
+          ? { models: [{ name: 'gpt-3.5-turbo', provider: 'openai', deprecated: true }], total: 1 }
+          : { models: [], total: 0 },
+    });
+
+    const models = await new BifrostApi(directTransport('https://gw.test', TOKEN)).listModels();
+
+    expect(models.map((m) => m.id)).toEqual(['openai/gpt-3.5-turbo']);
+    expect(calls[0]).toContain('include_deprecated=true');
   });
 
   it('turns /api/providers plus its keys into canvas provider configs', async () => {
@@ -76,5 +93,32 @@ describe('BifrostApi catalog reads', () => {
   it('surfaces a gateway that does not serve the catalog', async () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error: { message: 'not found' } }), { status: 404 }));
     await expect(new BifrostApi(directTransport('https://gw.test', TOKEN)).listModels()).rejects.toBeInstanceOf(BifrostApiError);
+  });
+});
+
+describe('BifrostApi error classification', () => {
+  const forbidden = () =>
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response(JSON.stringify({ error: { message: 'Forbidden' } }), { status: 403 }),
+    );
+
+  it('names client.allowed_origins on a 403 in direct mode (2.3.0 origin check)', async () => {
+    forbidden();
+    const err = await new BifrostApi(directTransport('https://gw.test', TOKEN))
+      .listRules()
+      .catch((e: BifrostApiError) => e);
+    expect(err).toBeInstanceOf(BifrostApiError);
+    expect((err as BifrostApiError).message).toContain('client.allowed_origins');
+    expect((err as BifrostApiError).isAuth).toBe(true);
+  });
+
+  it('leaves a bridge-mode 403 alone — the bridge sends no Origin, so it cannot be that', async () => {
+    forbidden();
+    const err = await new BifrostApi(bridgeTransport('https://gw.test', TOKEN))
+      .listRules()
+      .catch((e: BifrostApiError) => e);
+    expect((err as BifrostApiError).message).not.toContain('client.allowed_origins');
   });
 });

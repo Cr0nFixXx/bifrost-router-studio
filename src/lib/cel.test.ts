@@ -66,6 +66,54 @@ describe('cel parser', () => {
   });
 });
 
+describe('cel lexer strings', () => {
+  it('reads an escaped quote as the character, not as the end of the string', () => {
+    const { group, error } = parseExpression('model == "gpt\\"4"');
+    expect(error).toBeUndefined();
+    expect('value' in group.conditions[0] && group.conditions[0].value).toBe('gpt"4');
+  });
+
+  it('reads a backslash as a literal backslash (escape order: backslash first)', () => {
+    const { group, error } = parseExpression('model == "a\\\\b"');
+    expect(error).toBeUndefined();
+    expect('value' in group.conditions[0] && group.conditions[0].value).toBe('a\\b');
+  });
+
+  it('round-trips a value holding quotes — the compiler emits what the lexer reads', () => {
+    const g = newGroup();
+    g.conditions[0] = { id: 'c1', field: 'model', op: '==', value: 'say "hi" \\ now' };
+    const expr = compileGroup(g);
+    const back = parseExpression(expr);
+    expect(back.error).toBeUndefined();
+    expect(compileGroup(back.group)).toBe(expr);
+    expect('value' in back.group.conditions[0] && back.group.conditions[0].value).toBe(
+      'say "hi" \\ now',
+    );
+  });
+
+  it('reads a triple-quoted string including whitespace and newlines', () => {
+    const { group, error } = parseExpression('model == """mehr\nzeilen"""');
+    expect(error).toBeUndefined();
+    expect('value' in group.conditions[0] && group.conditions[0].value).toBe('mehr\nzeilen');
+  });
+
+  it('reads an empty string as an empty value, not as a triple quote', () => {
+    const { group, error } = parseExpression('model == ""');
+    expect(error).toBeUndefined();
+    expect('value' in group.conditions[0] && group.conditions[0].value).toBe('');
+  });
+
+  it('reports an unterminated string as a parse error instead of a truncated value', () => {
+    const result = parseExpression('model == "unterminated');
+    expect(result.error).toBeTruthy();
+  });
+
+  it('reports an unterminated triple-quoted string as a parse error', () => {
+    const result = parseExpression('model == """never closed');
+    expect(result.error).toBeTruthy();
+  });
+});
+
 describe('cel validator', () => {
   it('flags empty expression as a warning', () => {
     expect(validateCEL('').some((d) => d.severity === 'warning')).toBe(true);

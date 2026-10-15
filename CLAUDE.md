@@ -159,7 +159,7 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
   `getCanvasRules()` in the store, `workflowToRules(nodes, edges)` in components. A cache would
   reintroduce exactly the bug, with a second way to go stale.
 - **The gateway holds UNIQUE (scope, priority).** A swap of 0 and 1 cannot be written sequentially —
-  the first rule takes the priority the second still holds, and the gateway answers 500. Only rules
+  the first rule takes the priority the second still holds, and the gateway answers 409 (vor 2.3.0: 500). Only rules
   whose *target* priority is occupied need `planPriorityPhases` to step them out of the way first;
   the file-mode schema has no such constraint, so drag-and-drop works locally and only breaks at the
   gateway. The mock simulates it (`mock-bifrost.mjs`, `priorityTaken`) — without that simulation every
@@ -202,6 +202,9 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
 - `targets` in a PUT replaces the entire list. A partial `targets` array silently drops routes.
 - Generate `query` from CEL on every push, or Bifrost's rule builder drifts from the canvas.
 - Never let a server-only field (`ttft_timeout_ms`) enter the diff, or every sync writes.
+  **2.3.0 ändert das:** ab dort ist es *beschreibbar* und liegt laut Changelog am **Target**, nicht
+  an der Rule. Bis die Verifikation gegen eine echte Instanz steht (TODO.md), gilt die alte Regel
+  unverändert — lieber nichts schreiben als ein Feld an der falschen Stelle modellieren.
 - The version prefix and the rules suffix travel **together**: `/api/routing` + `/rules` =
   `/api/routing/rules`, but `/api/governance` + `/rules` is a path that does not exist — the legacy
   suffix is `/routing-rules`. Getting this wrong kills the <2.0.0 fallback while every test still

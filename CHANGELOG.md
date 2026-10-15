@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.9 — Build 26101515
+
+- **The studio can now read back the expressions it writes.** `emitValue` escapes string
+  values through `JSON.stringify`, and the lexer stopped at the first matching quote
+  without unescaping — `model == "gpt\"4"` parsed to `gpt\`. The lexer now handles the
+  escape set `JSON.stringify` produces, reads `"""…"""` / `'''…'''`, and throws on an
+  unterminated string instead of returning a truncated value. Round-trips a quoted value
+  are proven by test.
+- **A rule whose CEL expression does not parse no longer renders a fake condition node.**
+  The parse error was ignored, and the placeholder (`model == ""`) reached the canvas as an
+  *editable* node — editing it then compiled the placeholder over the real condition. The
+  rule now appears without a condition tree and keeps its raw expression, which is honest
+  instead of wrong.
+- **The model catalog no longer shrinks silently on 2.3.0.** `GET /api/models` hides
+  deprecated models by default, and the gateway still routes to them. The dropdown lost
+  entries, and `providerWarnings` began flagging perfectly valid rules as "not in the model
+  catalog" — a false alarm indistinguishable from a real one. `include_deprecated=true` is
+  now sent.
+- **A 403 in direct mode now says what to do about it.** Since 2.3.0 a gateway with
+  dashboard auth off answers 403 to an origin missing from `client.allowed_origins` — a
+  blank `*` no longer counts. Instead of "403 Forbidden", the message names the setting and
+  says the bridge mode is unaffected.
+- **The priority collision is documented as 409** (it was 500 before 2.3.0). The mock, the
+  test double and the docs follow the changelog; the product code needs no change — it
+  catches every failure generically and the sync dodges the collision anyway.
+- **Not done: `ttft_timeout_ms` as an editable target field.** The 2.3.0 changelog puts it
+  on routing *targets* while our type carries it on the *rule*, and we have never written
+  the field, so nothing in the tree can settle it. It needs one read and one write against a
+  real 2.3.0 gateway first. Full write-up in `TODO.md`.
+
 ## 0.2.9 — Build 26101020
 
 - **Opening a file no longer leaves the studio writing to a gateway you left.** "Open

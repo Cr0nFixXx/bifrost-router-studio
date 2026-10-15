@@ -12,3 +12,4 @@ data/*.sqlite
 *-workspace/
 CLAUDE.local.md
 .vibecheck
+.old

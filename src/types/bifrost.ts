@@ -91,7 +91,11 @@ export type ApiRuleUpdate = Partial<Omit<ApiRuleCreate, 'scope'>>;
 export interface ApiRule extends ApiRuleCreate {
   id: string;
   chain_rule?: boolean;
-  /** Streaming cutoff, 1–300000 ms. Not modelled in the canvas. */
+  /**
+   * Streaming cutoff, 1–300000 ms, **rule-level** (Bifrost routing docs: "not a target field").
+   * Writable since 2.3.0, but the canvas has no field for it: read-only here and excluded from
+   * the write diff (`sync.ts` `writeFingerprint`) so an unmodelled value never triggers a sync.
+   */
   ttft_timeout_ms?: number | null;
   /** Raw query-builder JSON from the Bifrost dashboard. */
   query?: unknown;

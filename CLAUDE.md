@@ -202,9 +202,11 @@ Each of these was hit for real; several cost silent data loss or a silent 403. F
 - `targets` in a PUT replaces the entire list. A partial `targets` array silently drops routes.
 - Generate `query` from CEL on every push, or Bifrost's rule builder drifts from the canvas.
 - Never let a server-only field (`ttft_timeout_ms`) enter the diff, or every sync writes.
-  **2.3.0 ändert das:** ab dort ist es *beschreibbar* und liegt laut Changelog am **Target**, nicht
-  an der Rule. Bis die Verifikation gegen eine echte Instanz steht (TODO.md), gilt die alte Regel
-  unverändert — lieber nichts schreiben als ein Feld an der falschen Stelle modellieren.
+  **Seit 2.3.0 beschreibbar, und zwar an der Rule** — die Routing-Doku sagt ausdrücklich
+  „rule-level field, not a target field"; die ursprüngliche Changelog-Lesart (Target) war falsch.
+  Der Canvas hat kein Feld dafür und modelliert es bewusst nicht: es bleibt lesend in `ApiRule`,
+  wird aus `writeFingerprint` (`sync.ts`) ausgeschlossen und nie in `toWriteShape` /
+  `toUpdateShape` übernommen.
 - The version prefix and the rules suffix travel **together**: `/api/routing` + `/rules` =
   `/api/routing/rules`, but `/api/governance` + `/rules` is a path that does not exist — the legacy
   suffix is `/routing-rules`. Getting this wrong kills the <2.0.0 fallback while every test still

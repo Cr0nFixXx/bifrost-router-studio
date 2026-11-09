@@ -164,7 +164,8 @@ Ursache. Falls das wieder auftritt: Auftrag verkleinern, nicht den Provider wech
 - Kein Viewer geöffnet — die Auswertung lief über den Vergleich der Antworten, weil nur vier
   Tests liefen und die Abweichungen direkt sichtbar waren.
 - API-Modus-Grenzen: keine Konflikterkennung, kein Offline-Queue, `ttft_timeout_ms`/`scope`/`priority`
-  nicht im Canvas editierbar — steht in [`TODO.md`](./TODO.md)
+  nicht im Canvas editierbar — steht in [`TODO.md`](./TODO.md). `ttft_timeout_ms` ist seit der
+  2.4/2.5-Prüfung geklärt: **rule-level** (Doku), bleibt bewusst lesend.
 - Plugins: 20 Stück sind aktiviert und wurden nie benutzt (~5.700 est. Tokens pro Session). Der
   Nutzer hat die Deaktivierung abgelehnt — nicht wieder vorschlagen, ohne gefragt zu werden
 

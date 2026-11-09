@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.9 — Build 26110901
+
+- **A `config.json` rule without an `id` no longer loses its identity on import.** Since
+  Bifrost 2.5.0 the field is optional — the gateway then matches a stored rule by name and
+  scope. Our canvas keys every rule by id, so an id-less rule used to reach the DB as
+  `undefined`. `parseConfigJSON` now mints a local UUID at the import boundary (both the
+  TopBar import and the Connect screen come through it); rules that do have an id keep it
+  verbatim. Covered by two tests.
+- **Round D is resolved: `ttft_timeout_ms` is a rule-level field.** The official routing
+  docs say so explicitly ("not a target field"); the 2.3.0 changelog reading was wrong.
+  `ApiRule` was already typed correctly, so the planned migration of the field onto
+  `ApiTarget` is dropped. The field stays read-only in the canvas and excluded from the
+  write diff.
+- **The simulation's primary-failure note now says `4xx/5xx`.** Bifrost 2.5.0 runs rule
+  fallbacks when the primary target returns a 4xx too; the mock used to label the failure
+  `upstream 503` only.
+- **`.env.example` mentions `server.base_path`.** Bifrost 2.5.0 can serve the API under a
+  prefix (`BIFROST_BASE_PATH`); when set, the prefix belongs in `BFRS_BIFROST_URL` and in a
+  hand-typed direct-mode URL. No code change — the bridge and the direct transport already
+  build paths from whatever base URL they are given.
+
 ## 0.2.9 — Build 26101515
 
 - **The studio can now read back the expressions it writes.** `emitValue` escapes string
@@ -11,7 +32,7 @@
 - **A rule whose CEL expression does not parse no longer renders a fake condition node.**
   The parse error was ignored, and the placeholder (`model == ""`) reached the canvas as an
   *editable* node — editing it then compiled the placeholder over the real condition. The
-  rule now appears without a condition tree and keeps its raw expression, which is honest
+  rule now appears without a condition tree and . its raw expression, which is honest
   instead of wrong.
 - **The model catalog no longer shrinks silently on 2.3.0.** `GET /api/models` hides
   deprecated models by default, and the gateway still routes to them. The dropdown lost

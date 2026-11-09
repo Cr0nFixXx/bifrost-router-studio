@@ -1613,7 +1613,7 @@ async function simulate(nodes: WFNode[], edges: Edge[], input: SimInput = DEFAUL
   if (primaryOk) {
     path.push({ nodeId: fallbackAnchor.id, kind: fallbackAnchor.data.kind, label: fallbackAnchor.data.label, status: 'done', note: '200 OK' });
   } else {
-    path.push({ nodeId: fallbackAnchor.id, kind: fallbackAnchor.data.kind, label: fallbackAnchor.data.label, status: 'fail', note: 'upstream 503' });
+    path.push({ nodeId: fallbackAnchor.id, kind: fallbackAnchor.data.kind, label: fallbackAnchor.data.label, status: 'fail', note: 'upstream error (4xx/5xx)' });
     for (const fb of fallbacks) {
       const ok = Math.random() > 0.2;
       fallbacksTried.push(`${fb.data.label}`);

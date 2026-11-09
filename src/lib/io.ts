@@ -11,6 +11,7 @@ import type { WFNode } from '@/types/workflow';
 import type { Edge } from 'reactflow';
 import { workflowToRules, rulesToConfig, rulesToWorkflow } from './bifrostMapper';
 import { fallbackFromParts, fallbackToParts, fallbackToRef } from './modelRefs';
+import { createRuleUid } from './ruleIds';
 
 export interface WorkspaceProject {
   app: 'bifrost-router-studio';
@@ -48,7 +49,11 @@ export function parseWorkspaceJSON(text: string): WorkspaceProject {
 /** Import a Bifrost config.json (governance.routing_rules) into rule objects. */
 export function parseConfigJSON(text: string): { rules: RoutingRule[]; providers: Record<string, unknown> } {
   const obj = JSON.parse(text);
-  const rules: RoutingRule[] = obj?.governance?.routing_rules ?? obj?.routing_rules ?? [];
+  const parsed: RoutingRule[] = obj?.governance?.routing_rules ?? obj?.routing_rules ?? [];
+  // Since Bifrost 2.5.0 `id` is optional in config.json — the gateway then matches a rule by
+  // name + scope. The canvas keys every rule by id, so a missing one gets a local UUID here,
+  // at the single import boundary (TopBar and ConnectScreen both come through this function).
+  const rules = parsed.map((r) => (typeof r?.id === 'string' && r.id ? r : { ...r, id: createRuleUid() }));
   const providers = obj?.providers ?? {};
   return { rules, providers };
 }

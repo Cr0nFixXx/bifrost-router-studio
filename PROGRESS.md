@@ -1785,3 +1785,45 @@ harten Grenze (natives SQLite-Schema hat die Spalte nicht) steht in [`TODO.md`](
   `cel.ts`.
 - **Zweite 403-Verzweigung in `ConnectScreen`.** `isAuth` klassifiziert schon; die Erkenntnis
   gehört in die Fehlermeldung, nicht in eine neue UI-Kluft.
+
+---
+
+## v0.2.9 Build 26110901 — Bifrost 2.4.0 + 2.5.0 geprüft, Runde D aufgelöst ✅
+
+**Kontext:** Changelogs v2.4.0 und v2.5.0 (2026-11-06) gegen Code und Doku geprüft. Kein neues
+CEL-Feld, kein neuer Operator, keine Änderung am Rule-Schema. v2.4.1 existiert nicht (Docs-Index
+und GitHub-Releases geprüft).
+
+### Die Kernauflösung: `ttft_timeout_ms` liegt an der Rule
+- Die offizielle Routing-Doku sagt ausdrücklich „rule-level field, not a target field". Die
+  2.3.0-Changelog-Lesart (Target) war falsch. `ApiRule.ttft_timeout_ms` war also von Anfang an
+  richtig getippt; die geplante Migration nach `ApiTarget` (TODO Runde D) entfällt.
+- Doku nachgezogen: `CLAUDE.md`-Gotcha, `TODO.md` (Runde-D-Item gestrichen, als Known limitation
+  festgehalten), `src/types/bifrost.ts`-Kommentar, `api-constraints.md` Constraint 5.
+- **Kein Verhaltens-Change:** Feld bleibt aus `writeFingerprint` ausgeschlossen, wird nie
+  geschrieben.
+
+### Das einzige echte Code-Problem: `config.json` ohne `id`
+- Seit 2.5.0 ist `id` pro Rule optional (Gateway matcht nach name+scope). `parseConfigJSON`
+  reichte die Regeln unverändert weiter — eine id-lose Regel landete als `id: undefined` in DB
+  und Canvas. Fix an der Import-Grenze (`src/lib/io.ts`): fehlende id → `createRuleUid()`.
+  Vorhandene ids bleiben unverändert. Zwei neue Tests in `io.test.ts` (id-los → distinct UUIDs,
+  id vorhanden → durchgelassen).
+
+### Kleinere Nachzügler
+- Simulation-Note `upstream 503` → `upstream error (4xx/5xx)` (`useStore.ts:1616`): 2.5.0 löst
+  Fallbacks auch bei 4xx aus.
+- `.env.example`: Hinweis auf `server.base_path` (2.5.0). Bridge und Direktmodus brauchen keinen
+  Code-Change — beide bauen Pfade aus der übergebenen Basis-URL.
+- 2.4.0: Complexity-Klassifikation wird übersprungen, wenn andere Bedingungen schon entscheiden —
+  Gateway-Laufzeitverhalten, keine Regel-Gestalt, kein Handlungsbedarf.
+
+### Verifikation
+- `npx tsc --noEmit`: keine Fehler.
+- `npx vitest run`: 248 Tests in 21 Dateien grün (+2 neue).
+- Build `26110901` in `src/lib/version.ts` und `package.json`.
+
+### Bewusst nicht geändert
+- Unknown `/api` → JSON-404 (2.5.0): macht den Prefix-Retry robuster, kein Handling nötig.
+- MCP-Admin-Statuscodes, `/mcp/<slug>`: Studio verwaltet keine MCP-Clients.
+- Keine 4xx-Validierung, kein neuer Simulationsmodus — die Simulation bleibt ein Mock.

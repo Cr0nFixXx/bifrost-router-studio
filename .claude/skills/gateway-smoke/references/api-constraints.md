@@ -66,6 +66,10 @@ den Canvas.
 `ttft_timeout_ms` (Streaming-Cutoff, 1–300000 ms) kennt der Canvas nicht. Fließt es in den
 Fingerprint ein, schreibt jeder Sync, obwohl sich nichts geändert hat.
 
+Das Feld liegt **an der Rule**, nicht an `targets[i]` — die Routing-Doku sagt ausdrücklich
+„rule-level field, not a target field"; die 2.3.0-Changelog-Lesart war falsch. Seit 2.3.0 ist es
+beschreibbar, für uns aber weiterhin nur lesend.
+
 → Nur Felder vergleichen, die der Canvas modelliert.
 
 ### 6. Der Pfad-Fork

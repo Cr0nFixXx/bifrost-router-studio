@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { exportWorkspaceXML, parseWorkspaceXML } from './io';
+import { exportWorkspaceXML, parseConfigJSON, parseWorkspaceXML } from './io';
 import { rulesToWorkflow, workflowToRules } from './bifrostMapper';
+import { isRuleUid } from './ruleIds';
 import type { RoutingRule } from '@/types/bifrost';
 
 const rule = (over: Partial<RoutingRule> = {}): RoutingRule => ({
@@ -37,5 +38,26 @@ describe('workspace XML export', () => {
   it('reads legacy text-only fallback elements', () => {
     const legacy = `<BifrostRouterStudio><Project name="ws" direction="LR"/><RoutingRules><Rule id="r1" name="Legacy" priority="0" scope="global" enabled="true"><CELExpression>true</CELExpression><Targets><Target provider="openai" model="gpt-4o" weight="1"/></Targets><Fallbacks><Fallback>anthropic/claude</Fallback></Fallbacks></Rule></RoutingRules></BifrostRouterStudio>`;
     expect(roundTripRules(legacy)[0].fallbacks).toEqual(['anthropic/claude']);
+  });
+});
+
+describe('config.json import (Bifrost 2.5.0: id is optional)', () => {
+  const configWith = (rules: unknown[]) => JSON.stringify({ governance: { routing_rules: rules } });
+  const baseRule = { name: 'R', cel_expression: 'true', targets: [{ weight: 1 }], scope: 'global', priority: 0 };
+
+  it('mints a distinct local id for every rule that has none', () => {
+    const { rules } = parseConfigJSON(configWith([{ ...baseRule, name: 'A' }, { ...baseRule, name: 'B' }]));
+
+    expect(rules).toHaveLength(2);
+    for (const r of rules) expect(isRuleUid(r.id)).toBe(true);
+    expect(rules[0].id).not.toBe(rules[1].id);
+    expect(rules.map((r) => r.name)).toEqual(['A', 'B']);
+  });
+
+  it('passes an existing id through untouched', () => {
+    const { rules } = parseConfigJSON(configWith([{ ...baseRule, id: 'kept-id' }, { ...baseRule, name: 'B', id: '' }]));
+
+    expect(rules[0].id).toBe('kept-id');
+    expect(isRuleUid(rules[1].id)).toBe(true);
   });
 });
